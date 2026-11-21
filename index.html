@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Roggy City</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=Saira+Condensed:wght@600;700;800&display=swap">
+<style>
+  /* Single-look game UI: night-city HUD over the 3D view. */
+  :root {
+    --ink: #f4f1ea;
+    --ink-dim: rgba(244, 241, 234, 0.62);
+    --panel: rgba(9, 12, 15, 0.62);
+    --panel-solid: #0c1014;
+    --accent: #ff5a4f;
+    --amber: #f2c14e;
+    --line: rgba(255, 255, 255, 0.14);
+    --font-hud: "Saira Condensed", "Barlow Condensed", "Arial Narrow", sans-serif;
+    --font-text: "Barlow", "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; background: #07090b; color: var(--ink); overflow: hidden; touch-action: none; }
+  body { font-family: var(--font-text); -webkit-user-select: none; user-select: none; }
+  canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud[hidden] { display: none !important; }
+  #radio { position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: 50%; transform: translate(-50%, -12px); text-align: center; opacity: 0; transition: opacity .35s, transform .35s; }
+  #radio.show { opacity: 1; transform: translate(-50%, 0); }
+  #radio-name { font: 800 italic 40px/1 var(--font-hud); letter-spacing: .04em; text-shadow: 0 2px 0 #000, 0 0 18px rgba(0,0,0,.6); }
+  #radio-song { margin-top: 4px; font: 600 16px/1.2 var(--font-text); color: var(--ink); text-shadow: 0 1px 3px #000; }
+  #clock { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: max(18px, env(safe-area-inset-right, 0px)); font: 700 28px/1 var(--font-hud); letter-spacing: .05em; text-shadow: 0 2px 0 #000; font-variant-numeric: tabular-nums; }
+  #fps { position: absolute; top: calc(48px + env(safe-area-inset-top, 0px)); right: max(18px, env(safe-area-inset-right, 0px)); font: 600 12px var(--font-hud); color: var(--ink-dim); }
+  #minimap { position: absolute; left: max(18px, env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: 190px; height: 190px; border-radius: 50%; box-shadow: 0 6px 24px rgba(0,0,0,.55); }
+  #speedo-wrap { position: absolute; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); opacity: 0; transition: opacity .3s; }
+  #speedo-wrap.show { opacity: 1; }
+  #speedo { width: 210px; height: 210px; display: block; }
+  #prompt { position: absolute; left: 50%; bottom: calc(120px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 9px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font: 600 16px var(--font-text); opacity: 0; transition: opacity .2s; white-space: nowrap; }
+  #prompt.show { opacity: 1; }
+  #prompt kbd, .keys kbd { font: 700 13px var(--font-hud); background: var(--ink); color: #111; border-radius: 4px; padding: 1px 7px; margin: 0 2px; box-shadow: 0 2px 0 rgba(0,0,0,.5); }
+  #toast { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); font: 800 italic 34px var(--font-hud); letter-spacing: .03em; color: var(--amber); text-shadow: 0 2px 0 #000, 0 0 20px rgba(0,0,0,.7); opacity: 0; transition: opacity .3s; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  #hint { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: max(18px, env(safe-area-inset-left, 0px)); font: 500 13px var(--font-text); color: var(--ink-dim); text-shadow: 0 1px 2px #000; }
+
+  /* ---------- touch controls ---------- */
+  #touch { position: fixed; inset: 0; z-index: 6; display: none; }
+  body.touch.playing #touch { display: block; }
+  body.touch #radio { top: calc(150px + env(safe-area-inset-top, 0px)); }
+  #stick { position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); background: rgba(0,0,0,.18); left: 30px; bottom: 40px; opacity: .55; pointer-events: none; }
+  #stick.on { opacity: 1; bottom: auto; }
+  #knob { position: absolute; left: 45px; top: 45px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.55); }
+  .tbtns { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(240px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(2, 64px); gap: 10px; }
+  .tbtn { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: rgba(10,12,15,.55); border: 2px solid rgba(255,255,255,.3); color: var(--ink); font: 700 13px var(--font-hud); letter-spacing: .04em; }
+  .tbtn.on { background: rgba(255,90,79,.7); }
+  body.touch #minimap { width: 130px; height: 130px; top: calc(14px + env(safe-area-inset-top, 0px)); bottom: auto; }
+  body.touch #speedo { width: 150px; height: 150px; }
+  body.touch #hint { display: none; }
+  body.touch #speedo-wrap { bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ---------- screens ---------- */
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px; box-sizing: border-box; }
+  .screen[hidden] { display: none !important; }
+  #loading { background: radial-gradient(120% 90% at 50% 100%, #2a1620 0%, #0b0d12 60%, #050608 100%); flex-direction: column; gap: 18px; }
+  .brand { font: 800 italic clamp(48px, 11vw, 112px)/0.9 var(--font-hud); letter-spacing: .02em; text-align: center; background: linear-gradient(180deg, #ffe6a3 0%, #ff9a5a 45%, #ff4f7b 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 rgba(0,0,0,.6)); text-wrap: balance; }
+  .bar { width: min(380px, 80vw); height: 4px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff9a5a, #ff4f7b); transition: width .25s; }
+  #load-text { font: 500 14px var(--font-text); color: var(--ink-dim); min-height: 1.2em; }
+
+  #start { background: linear-gradient(180deg, rgba(5,6,8,.25) 0%, rgba(5,6,8,.78) 70%); flex-direction: column; text-align: center; overflow-y: auto; }
+  .start-inner { display: flex; flex-direction: column; align-items: center; gap: 18px; max-width: 760px; }
+  .tag { font: 600 17px/1.45 var(--font-text); color: var(--ink); max-width: 52ch; text-shadow: 0 1px 3px #000; }
+  .play { pointer-events: auto; font: 800 italic 28px var(--font-hud); letter-spacing: .06em; color: #140a0a; background: linear-gradient(180deg, #ffd27a, #ff7a4f); border: 0; border-radius: 6px; padding: 12px 44px; cursor: pointer; box-shadow: 0 6px 0 #7a2a1a, 0 12px 30px rgba(0,0,0,.5); }
+  .play:active { transform: translateY(3px); box-shadow: 0 3px 0 #7a2a1a; }
+  .play:focus-visible, .menu button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 12px 20px; justify-content: center; font: 500 14px var(--font-text); color: var(--ink-dim); }
+  .opts label { display: flex; gap: 8px; align-items: center; }
+  select, input[type=range] { accent-color: var(--accent); }
+  select { background: var(--panel-solid); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; font: 500 14px var(--font-text); }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 22px; width: 100%; text-align: left; font: 500 14px/1.6 var(--font-text); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 18px; box-sizing: border-box; }
+  .keys h3 { grid-column: 1 / -1; margin: 0 0 2px; font: 700 13px var(--font-hud); letter-spacing: .12em; text-transform: uppercase; color: var(--amber); }
+  #pause { background: rgba(5,6,8,.72); backdrop-filter: blur(4px); }
+  .menu { display: flex; flex-direction: column; gap: 14px; width: min(440px, 100%); background: var(--panel-solid); border: 1px solid var(--line); border-radius: 10px; padding: 22px; box-sizing: border-box; }
+  .menu h2 { margin: 0; font: 800 italic 36px var(--font-hud); letter-spacing: .04em; }
+  .menu .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 500 15px var(--font-text); }
+  .menu .row input[type=range] { width: 55%; }
+  .menu button { font: 700 18px var(--font-hud); letter-spacing: .08em; padding: 10px; border-radius: 6px; border: 1px solid var(--line); background: #1a2026; color: var(--ink); cursor: pointer; }
+  .menu button.primary { background: linear-gradient(180deg, #ffd27a, #ff7a4f); color: #140a0a; border: 0; }
+  .note { font: 500 13px var(--font-text); color: var(--ink-dim); }
+  #err { position: fixed; inset: auto 16px 16px 16px; z-index: 50; background: #3a0d0d; color: #ffdcdc; border: 1px solid #a33; border-radius: 6px; padding: 10px 14px; font: 500 13px/1.4 var(--font-text); }
+  @media (max-width: 640px) {
+    #radio-name { font-size: 28px; }
+    #radio-song { font-size: 13px; }
+    #toast { font-size: 24px; }
+    #prompt { font-size: 14px; bottom: calc(200px + env(safe-area-inset-bottom, 0px)); }
+  }
+  @media (prefers-reduced-motion: reduce) { #radio, #toast, #prompt, .bar i { transition: none; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="game" tabindex="0"></canvas>
+
+<div id="hud" hidden>
+  <div id="radio"><div id="radio-name"></div><div id="radio-song"></div></div>
+  <div id="clock">16:30</div>
+  <div id="fps"></div>
+  <div id="hint">Hold <b>Tab</b> for controls · <b>Esc</b> menu</div>
+  <canvas id="minimap" width="380" height="380"></canvas>
+  <div id="speedo-wrap"><canvas id="speedo" width="420" height="420"></canvas></div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+</div>
+
+<div id="touch">
+  <div id="stick" data-stick><div id="knob" data-knob></div></div>
+  <div class="tbtns">
+    <div class="tbtn" data-btn="enter">ENTER</div>
+    <div class="tbtn" data-btn="jump">JUMP</div>
+    <div class="tbtn" data-btn="radio">RADIO</div>
+    <div class="tbtn" data-btn="horn">HORN</div>
+    <div class="tbtn" data-btn="cam">CAM</div>
+    <div class="tbtn" data-btn="menu">MENU</div>
+  </div>
+</div>
+
+<div id="loading" class="screen">
+  <div class="brand">ROGGY CITY</div>
+  <div class="bar"><i id="load-bar"></i></div>
+  <div id="load-text">Starting engine…</div>
+</div>
+
+<div id="start" class="screen" hidden>
+  <div class="start-inner">
+    <div class="brand">ROGGY CITY</div>
+    <p class="tag">An open city with live traffic, pedestrians, five radio stations and a sun that sets. Steal a ride, find the hills, or just cruise downtown at night.</p>
+    <button class="play" id="play-btn">PLAY</button>
+    <div class="opts">
+      <label for="quality-sel">Graphics
+        <select id="quality-sel">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+      <span class="note" id="quality-note"></span>
+    </div>
+    <div class="keys" id="keys-start"></div>
+  </div>
+</div>
+
+<div id="pause" class="screen" hidden>
+  <div class="menu">
+    <h2>PAUSED</h2>
+    <div class="row"><label for="vol-master">Master volume</label><input type="range" id="vol-master" min="0" max="1" step="0.05" value="0.8"></div>
+    <div class="row"><label for="vol-radio">Radio volume</label><input type="range" id="vol-radio" min="0" max="1" step="0.05" value="0.7"></div>
+    <div class="row"><label for="vol-sfx">Effects volume</label><input type="range" id="vol-sfx" min="0" max="1" step="0.05" value="0.9"></div>
+    <div class="row"><label for="sens">Look sensitivity</label><input type="range" id="sens" min="0.3" max="2.5" step="0.1" value="1"></div>
+    <div class="row"><label for="dj-voice">DJ voices</label><input type="checkbox" id="dj-voice" checked></div>
+    <div class="row"><label for="quality-sel2">Graphics (reloads)</label>
+      <select id="quality-sel2"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
+    <button class="primary" id="resume-btn">RESUME</button>
+    <div class="keys" id="keys-pause"></div>
+  </div>
+</div>
+
+<div id="keys-overlay" class="screen" hidden style="background: rgba(5,6,8,.55); pointer-events: none;">
+  <div class="keys" id="keys-tab" style="max-width: 760px;"></div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
