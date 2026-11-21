@@ -162,7 +162,10 @@ export class Vehicle {
       if (this.rpm > E.redline - 350 && this.gear < E.gears.length && this.throttle > 0.2) { this.gear++; this.shiftTimer = 0.28; this.onShift?.(1); }
       else if (this.gear > 1 && engineFromWheels < E.peak * 0.48) { this.gear--; this.shiftTimer = 0.2; this.onShift?.(-1); }
     }
-    let engineTorque = this.torqueAt(this.rpm) * this.throttle;
+    // traction control trims torque while the driven wheels spin (handbrake turns it off)
+    if (this.wheelspin > 0.25 && this.handbrake < 0.1) this.tc = Math.max(0.35, (this.tc ?? 1) - dt * 4);
+    else this.tc = Math.min(1, (this.tc ?? 1) + dt * 1.5);
+    let engineTorque = this.torqueAt(this.rpm) * this.throttle * this.tc;
     if (this.rpm > E.redline) engineTorque = 0;
     if (this.shiftTimer > 0.05) engineTorque *= 0.1;
     const driveTotal = engineTorque * gearRatio * E.final * 0.88 / R * (this.gear === -1 ? -1 : 1);
@@ -187,7 +190,7 @@ export class Vehicle {
       if (susp >= this.restLen) {
         w.contact = false; w.comp = 0; w.susp = this.restLen; w.load = 0;
         w.omega *= Math.exp(-0.5 * dt);
-        if (w.driven) w.omega += driveTotal / nd * dt * 0.02;
+        if (w.driven) w.omega = clamp(w.omega + driveTotal / nd * dt * 0.02, -400, 400);
         continue;
       }
       w.contact = true; onGround++;
@@ -242,7 +245,8 @@ export class Vehicle {
       const tot = Math.hypot(Fx, Fy);
       let spin = 0;
       if (tot > maxF) {
-        if (w.driven && Math.abs(driveTotal / nd) > maxF * 0.95) spin = (Math.abs(driveTotal / nd) - maxF) / maxF;
+        // wheelspin ratio; a wheel that touches with almost no load can't be divided by
+        if (w.driven && maxF > 60 && Math.abs(driveTotal / nd) > maxF * 0.95) spin = Math.min(3, (Math.abs(driveTotal / nd) - maxF) / maxF);
         const s = maxF / tot;
         Fx *= s; Fy *= s * (spin > 0 ? 0.8 : 1);
       }
@@ -251,7 +255,7 @@ export class Vehicle {
       w.slipLat = vLat; w.slipLong = vLong;
       // wheel visual spin (spins up on wheelspin, stops when locked)
       const locked = (brk > 0.9 && Math.abs(vLong) > 3 && !w.driven) || (!w.front && this.handbrake > 0.1);
-      w.omega = locked ? 0 : vLong / R + (w.driven ? spin * 25 * sign(driveTotal) : 0);
+      w.omega = locked ? 0 : clamp(vLong / R + (w.driven ? spin * 25 * sign(driveTotal) : 0), -400, 400);
       w.skid = Math.max(0, Math.abs(vLat) - 2.2) * 0.4 + (spin > 0.1 ? 1 : 0) + (locked && Math.abs(vLong) > 2 ? 1 : 0);
       this.skidAmount = Math.max(this.skidAmount, w.skid);
       if (spin > this.wheelspin) this.wheelspin = spin;
@@ -407,7 +411,9 @@ export class Vehicle {
     vis.wheelSteer = this.steer;
     const base = this.restLen - this.staticComp;
     this.wheels.forEach((w, i) => {
-      w.spin += w.omega * dt;
+      // keep the angle bounded and finite so the wheel can never vanish
+      w.spin = (w.spin + w.omega * dt) % (Math.PI * 2);
+      if (!Number.isFinite(w.spin)) { w.spin = 0; w.omega = 0; }
       vis.wheelSpin[i] = w.spin;
       vis.wheelDrop[i] = base - w.susp;
     });

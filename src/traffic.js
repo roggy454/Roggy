@@ -488,7 +488,7 @@ export class Traffic {
     g.position.set(a.x, y, a.z);
     a.visYaw = a.visYaw === undefined ? a.yaw : dampAngle(a.visYaw, a.yaw, 9, dt);
     g.rotation.set(a.pitch, a.visYaw, a.roll, 'YXZ');
-    a.spin += (a.v / a.T.R) * dt;
+    a.spin = (a.spin + (a.v / a.T.R) * dt) % (Math.PI * 2);
     for (let i = 0; i < 4; i++) vis.wheelSpin[i] = a.spin;
     vis.wheelSteer = a.state === 'drive' ? clamp(Math.atan(a.T.wb * (a.curv || 0)), -0.6, 0.6) : 0;
     // lights

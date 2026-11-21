@@ -6,7 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { QUALITY, CITY_EDGE, CURB_H } from './config.js';
-import { clamp, lerp, damp, dampAngle, RNG } from './utils.js';
+import { clamp, lerp, damp, dampAngle, wrapAngle, RNG } from './utils.js';
 import { buildMaterials, globalUniforms } from './materials.js';
 import { Terrain, onRoad } from './terrain.js';
 import { City } from './city.js';
@@ -18,6 +18,7 @@ import { Vehicle, SkidMarks, TireSmoke, obbVsObb } from './vehicle.js';
 import { Traffic } from './traffic.js';
 import { Pedestrians } from './pedestrians.js';
 import { Player } from './player.js';
+import { DriverSystem } from './drivers.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { AudioSystem } from './audio.js';
@@ -29,7 +30,7 @@ if (isTouch) document.body.classList.add('touch');
 
 const CONTROLS = {
   foot: [['W A S D', 'Move'], ['Shift', 'Sprint'], ['Space', 'Jump'], ['F', 'Enter / steal a car'], ['Mouse', 'Look around'], ['Wheel', 'Zoom']],
-  car: [['W / S', 'Throttle / brake & reverse'], ['A / D', 'Steer'], ['Space', 'Handbrake'], ['H', 'Horn'], ['Q / E or wheel', 'Radio station'], ['F', 'Get out'], ['V', 'Camera view'], ['L', 'Headlights'], ['R', 'Flip car upright']],
+  car: [['W / S', 'Throttle / brake & reverse'], ['A / D', 'Steer'], ['Space', 'Handbrake'], ['H', 'Horn'], ['Q / E or wheel', 'Radio station'], ['F', 'Get out'], ['V', 'Camera: chase, far, cockpit'], ['L', 'Headlights'], ['R', 'Flip car upright']],
   world: [['T (hold)', 'Fast-forward time'], ['M', 'Mute'], ['Tab (hold)', 'Show controls'], ['Esc', 'Pause menu']],
 };
 function renderKeys(el) {
@@ -105,6 +106,7 @@ class Game {
       },
     };
     this.wheels = new WheelRenderer(scene, Q.cars + 50);
+    this.drivers = new DriverSystem(scene, Q.drivers, Q.cars + 90);
     mats.plate = new THREE.MeshStandardMaterial({ map: tex.plates, roughness: 0.45, metalness: 0.1, emissiveMap: tex.plates, emissive: 0xffffff, emissiveIntensity: 0 });
     mats.beam = new THREE.MeshBasicMaterial({ map: tex.pool, color: 0xfff1d6, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     this.traffic = new Traffic(scene, city, terrain, this.wheels, mats, Q);
@@ -356,6 +358,14 @@ class Game {
       if (d2 < 200 * 200) { v.visual.group.updateMatrixWorld(true); v.visual.pushWheels(this.wheels, v.visual.group.matrixWorld); }
     }
     this.wheels.end();
+    // drivers + steering wheels (after every car's matrix is current)
+    const cars = this._carList || (this._carList = []);
+    cars.length = 0;
+    const cpos = this.camera.position;
+    for (const a of this.traffic.agents) cars.push({ visual: a.visual, driver: a.state !== 'abandoned', dist: Math.hypot(a.x - cpos.x, a.z - cpos.z) });
+    for (const v of this.vehicles) cars.push({ visual: v.visual, driver: false, dist: Math.hypot(v.pos.x - cpos.x, v.pos.z - cpos.z) });
+    const seated = this.mode === 'car' ? { h: this.player.h, anim: this.player.anim, visual: this.current.visual } : null;
+    this.drivers.update(dt, cars, seated, this.mode === 'car' && this.cam.mode === 2);
     this.city.updateSignals(this.traffic.time);
     this.updateEffects(dt);
     this.updateCamera(dt);
@@ -457,7 +467,7 @@ class Game {
     this.current = v;
     v.driven = true; v.wake();
     v.vel.multiplyScalar(0.2);
-    this.player.setVisible(false);
+    this.player.anim.sitW = 1; // the player now sits in the driver's seat (see DriverSystem)
     this.mode = 'car';
     this.cam.mode = 0;
     this.cam.yaw = v.yaw;
@@ -480,6 +490,12 @@ class Game {
     };
     let p = tryPos(1);
     if (!p.ok) { p = tryPos(-1); side = -1; }
+    // stand the player back up outside the driver's door
+    const ph = this.player.h;
+    this.scene.add(ph.group);
+    ph.mesh.scale.setScalar(ph.height / 1.8);
+    ph.bones.head.scale.setScalar(1);
+    this.player.anim.sitW = 0;
     this.player.place(p.x + f.x * 0.3, p.z + f.z * 0.3, Math.atan2(left.x * side, left.z * side));
     this.player.setVisible(true);
     v.driven = false;
@@ -606,7 +622,7 @@ class Game {
         if (w.contact && w.skid > 0.35 && w.surface !== 'grass') {
           const f = v.forward(_tmp);
           this.skids.add(key, w.cp, f.x, f.z, v.T.tw * 0.9, clamp(w.skid, 0, 1), this.terrain.heightAt(w.cp.x, w.cp.z));
-          if (w.skid > 0.8 && Math.random() < 0.35) this.smoke.emit(w.cp.x, w.cp.y, w.cp.z, v.vel.x, v.vel.z, w.skid);
+          if (w.skid > 1.1 && v.speed > 2.5 && Math.random() < 0.3) this.smoke.emit(w.cp.x, w.cp.y, w.cp.z, v.vel.x, v.vel.z, w.skid);
         } else this.skids.cut(key);
       });
     }
@@ -690,14 +706,17 @@ class Game {
     this.camTarget.z = damp(this.camTarget.z, target.z, lam, dt);
     const T = this.camTarget;
     if (inCar && cam.mode === 2) {
-      // hood view
+      // cockpit view from the driver's eyes: dashboard, gauges, the turning wheel and your hands
       const v = this.current;
       const g = v.visual.group;
-      _tmp.set(0, v.T.top[v.T.top.length - 2][1] + 0.42, v.T.gh.ws + 0.15).applyMatrix4(g.matrixWorld);
+      const cab = v.visual.model.cabin;
+      const sc = Math.min(this.player.h.height / 1.8, cab.maxScale);
+      _tmp.set(cab.driverX, cab.seatH + 0.085 + 0.7 * sc, cab.hipZ + 0.12).applyMatrix4(g.matrixWorld);
       camera.position.copy(_tmp);
-      const q = _q.copy(v.quat).multiply(_q2.setFromEuler(_e.set(-cam.pitch * 0.3 + 0.05, Math.PI + (cam.yaw - v.yaw), 0, 'YXZ')));
+      const look = clamp(wrapAngle(cam.yaw - v.yaw), -1.6, 1.6);
+      const q = _q.copy(v.quat).multiply(_q2.setFromEuler(_e.set(-0.24 - (cam.pitch - 0.2) * 0.3, Math.PI + look, 0, 'YXZ')));
       camera.quaternion.copy(q);
-      fov = 70;
+      fov = 68;
     } else {
       const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
       const px = T.x - Math.sin(cam.yaw) * cp * dist, py = T.y + sp * dist, pz = T.z - Math.cos(cam.yaw) * cp * dist;

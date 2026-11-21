@@ -33,7 +33,7 @@ export const CAR_TYPES = {
   sports: {
     L: 4.5, W: 1.92, R: 0.345, tw: 0.27, track: 1.64, wb: 2.65, axleOff: -0.05, yb: 0.2, doors: 2,
     top: [[-2.25, 0.7], [-2.15, 0.88], [-1.8, 0.92], [-1.0, 0.9], [0, 0.86], [0.5, 0.84], [1.5, 0.74], [2.1, 0.62], [2.25, 0.52]],
-    gh: { ws: 0.55, rf: -0.45, rr: -0.95, rb: -1.9, roof: 1.24, tumble: 0.24, crown: 0.035 },
+    gh: { ws: 0.55, rf: -0.45, rr: -0.95, rb: -1.9, roof: 1.28, tumble: 0.24, crown: 0.035 },
     side: [[-9, -1.15, 'paint'], [-1.15, 9, 'glass']],
     shut: [0.5, -1.05], handles: [-0.85], mass: 1380, power: 1.9, sporty: true, redCaliper: true,
   },
@@ -97,10 +97,11 @@ baseCarMaterial.onBeforeCompile = function (sh) {
       else if (ch == 6.0) ei = uLights.w * 3.0;
       else if (ch == 7.0) ei = uInd.z * 2.2 + uLights.x * 1.5;
       else if (ch == 9.0) ei = uLights.y * 1.3 + uLights.z * 3.2;
+      else if (ch == 8.0) ei = uInd.z * 1.4;
       totalEmissiveRadiance += diffuseColor.rgb * ei;
     `);
 };
-baseCarMaterial.customProgramCacheKey = () => 'car-body-v1';
+baseCarMaterial.customProgramCacheKey = () => 'car-body-v2';
 
 export function makeCarMaterial(paintHex, metallic = true) {
   const m = baseCarMaterial.clone();
@@ -119,7 +120,7 @@ export function makeCarMaterial(paintHex, metallic = true) {
 // ---------- part specs ----------
 const S = {
   paint: { color: [1, 1, 1], mr: [0.5, 0.3], cc: 1, paint: 1 },
-  glass: { color: [0.006, 0.008, 0.011], mr: [0.0, 0.04], cc: 0.55 },
+  glass: { color: [0.006, 0.008, 0.011], mr: [0.0, 0.04], cc: 0.55, glass: true },
   black: { color: [0.025, 0.025, 0.027], mr: [0.0, 0.55], cc: 0.3 },
   gloss: { color: [0.01, 0.01, 0.012], mr: [0.0, 0.2], cc: 1 },
   plastic: { color: [0.05, 0.05, 0.052], mr: [0.0, 0.75], cc: 0 },
@@ -140,10 +141,28 @@ const S = {
   amberMark: { color: [0.75, 0.35, 0.02], mr: [0.0, 0.2], cc: 0.5 },
   mirrorGlass: { color: [0.25, 0.27, 0.3], mr: [1.0, 0.02], cc: 0 },
   exhaust: { color: [0.004, 0.004, 0.004], mr: [0.0, 1.0], cc: 0 },
+  // interior
+  carpet: { color: [0.028, 0.028, 0.03], mr: [0.0, 0.95], cc: 0 },
+  dash: { color: [0.032, 0.032, 0.035], mr: [0.0, 0.55], cc: 0.15 },
+  trim: { color: [0.055, 0.055, 0.06], mr: [0.0, 0.7], cc: 0 },
+  headliner: { color: [0.34, 0.32, 0.3], mr: [0.0, 0.95], cc: 0 },
+  screen: { color: [0.012, 0.03, 0.065], mr: [0.0, 0.1], cc: 1, emi: 8 },
+  gauge: { color: [0.11, 0.11, 0.12], mr: [0.0, 0.2], cc: 1, emi: 8 },
+  seatFrame: { color: [0.02, 0.02, 0.02], mr: [0.3, 0.6], cc: 0 },
+};
+// seat upholstery per vehicle type (linear colours)
+const SEATS = {
+  sedan: { color: [0.3, 0.23, 0.16], mr: [0, 0.5], cc: 0.2 },
+  taxi: { color: [0.03, 0.03, 0.032], mr: [0, 0.45], cc: 0.2 },
+  hatch: { color: [0.09, 0.09, 0.1], mr: [0, 0.9], cc: 0 },
+  suv: { color: [0.1, 0.055, 0.03], mr: [0, 0.45], cc: 0.2 },
+  sports: { color: [0.28, 0.02, 0.02], mr: [0, 0.45], cc: 0.2 },
+  van: { color: [0.07, 0.07, 0.075], mr: [0, 0.9], cc: 0 },
+  pickup: { color: [0.2, 0.14, 0.09], mr: [0, 0.6], cc: 0.1 },
 };
 
 class PartList {
-  constructor() { this.geos = []; }
+  constructor() { this.geos = []; this.glassGeos = []; }
   add(geo, spec) {
     const g = geo.index ? geo : geo; // keep indexed
     if (!g.index) {
@@ -164,7 +183,7 @@ class PartList {
     g.setAttribute('mrc', new THREE.BufferAttribute(mrc, 3));
     g.setAttribute('paint', new THREE.BufferAttribute(pt, 1));
     g.setAttribute('emi', new THREE.BufferAttribute(em, 1));
-    this.geos.push(g);
+    (spec.glass ? this.glassGeos : this.geos).push(g);
   }
   // Box centred at (x,y,z) with size, rotation (Euler XYZ) — mirrored copy if mirror=true at -x.
   box(x, y, z, sx, sy, sz, spec, rx = 0, ry = 0, rz = 0) {
@@ -185,6 +204,27 @@ class PartList {
     m.computeBoundingSphere();
     return m;
   }
+  mergeGlass() {
+    const m = mergeGeometries(this.glassGeos, false);
+    m.computeBoundingSphere();
+    return m;
+  }
+}
+
+// A box whose faces point inwards (for cabin walls seen through the windows).
+function invertedBox(x0, x1, y0, y1, z0, z1, skip = []) {
+  const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+  g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  const names = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
+  const idx = g.index.array, out = [];
+  for (let f = 0; f < 6; f++) {
+    if (skip.includes(names[f])) continue;
+    for (let t = 0; t < 2; t++) { const b = f * 6 + t * 3; out.push(idx[b], idx[b + 2], idx[b + 1]); }
+  }
+  g.setIndex(out);
+  const n = g.attributes.normal;
+  for (let i = 0; i < n.count; i++) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i));
+  return g;
 }
 
 // ---------- profile helpers ----------
@@ -270,17 +310,20 @@ function rangeStations(a, b, step) {
 }
 
 // Build a lofted strip from rings (each ring = array of [x,y,z]) using points k0..k1, mirrored.
-function loftStrip(rings, k0, k1, parts, spec) {
+// inner = true builds the same strip facing inwards, slightly inset (headliner, inside of pillars).
+function loftStrip(rings, k0, k1, parts, spec, inner = false) {
   const pos = [], idx = [];
   const nk = k1 - k0 + 1, ns = rings.length;
   for (const side of [1, -1]) {
     const base = pos.length / 3;
     for (let s = 0; s < ns; s++) for (let k = k0; k <= k1; k++) {
-      const p = rings[s][k]; pos.push(p[0] * side, p[1], p[2]);
+      const p = rings[s][k];
+      if (inner) pos.push(p[0] * side * 0.975, p[1] - 0.012, p[2]);
+      else pos.push(p[0] * side, p[1], p[2]);
     }
     for (let s = 0; s < ns - 1; s++) for (let k = 0; k < nk - 1; k++) {
       const A = base + s * nk + k, B = base + (s + 1) * nk + k, C = B + 1, D = A + 1;
-      if (side === 1) idx.push(A, D, C, A, C, B); else idx.push(A, C, D, A, B, C);
+      if ((side === 1) !== inner) idx.push(A, D, C, A, C, B); else idx.push(A, C, D, A, B, C);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -355,6 +398,106 @@ function sideHLine(P, parts, z0, z1, y, h, spec, out = 0.003) {
   parts.add(g, spec);
 }
 
+// ---------- interior ----------
+// Cabin tub, dashboard with gauges and a screen, steering column, seats, console and door
+// panels. Returns where the driver sits and where the steering wheel goes.
+function addInterior(typeName, T, P, parts) {
+  const g = T.gh;
+  const seat = SEATS[typeName] || SEATS.sedan;
+  const floorY = T.yb + (T.sporty ? 0.02 : 0.07);
+  const zFw = g.ws - 0.02;
+  const zDashBack = g.ws - (T.vanRear ? 0.55 : 0.5);
+  const tilt = T.vanRear ? 0.62 : 0.42;
+  const wheelZ = zDashBack - 0.13;
+  const hipZ = wheelZ - 0.56;
+  const rearSeatZ = hipZ - 0.88;
+  const zRear = T.vanRear ? g.rb + 0.08 : Math.max(g.rb + 0.04, P.zr + 0.3);
+  const wI = Math.min(P.hw(hipZ), P.hw(zDashBack)) - 0.1;
+  const beltMin = Math.min(P.yt(hipZ), P.yt(zDashBack), P.yt(Math.max(zRear, hipZ - 1.2))) - 0.035;
+  const roofHead = P.roofY(hipZ - 0.1);
+  const seatH = Math.max(floorY + 0.14, Math.min(beltMin - 0.38, roofHead - 0.95));
+  const maxScale = Math.min(1.06, (roofHead - 0.05 - seatH) / 0.91);
+  const dX = wI * 0.47;
+  const wheelY = seatH + (T.sporty ? 0.36 : 0.4);
+  // tub: door panels, firewall, rear wall and carpet
+  parts.add(invertedBox(-wI, wI, floorY - 0.02, beltMin, zRear, zFw, ['py', 'ny']), S.trim);
+  const fl = new THREE.PlaneGeometry(wI * 2, zFw - zRear);
+  fl.rotateX(-Math.PI / 2); fl.translate(0, floorY, (zFw + zRear) / 2);
+  parts.add(fl, S.carpet);
+  // dashboard: upper dash, recessed lower dash, instrument binnacle, gauges, screen, vents
+  const dashTop = P.yt(g.ws) - 0.015;
+  parts.box(0, dashTop - 0.11, (zDashBack + zFw) / 2, wI * 2, 0.22, zFw - zDashBack, S.dash);
+  const lowH = dashTop - 0.22 - (floorY + 0.18);
+  if (lowH > 0.05) parts.box(0, floorY + 0.18 + lowH / 2, (zDashBack + 0.15 + zFw) / 2, wI * 2, lowH, zFw - zDashBack - 0.15, S.dash);
+  parts.box(dX, dashTop + 0.02, zDashBack + 0.1, 0.36, 0.07, 0.22, S.dash);
+  for (const o of [-0.075, 0.075]) parts.cyl(dX + o, dashTop - 0.035, zDashBack - 0.004, 0.052, 0.01, 'z', S.gauge, 18);
+  parts.box(0, dashTop - 0.09, zDashBack - 0.012, 0.26, 0.15, 0.02, S.screen);
+  for (const vx of [-(wI - 0.16), -0.2, 0.2, wI - 0.16]) parts.box(vx, dashTop - 0.06, zDashBack - 0.006, 0.13, 0.045, 0.015, S.gloss);
+  // steering column along the wheel axis
+  {
+    const col = new THREE.CylinderGeometry(0.03, 0.04, 0.26, 10);
+    col.rotateX(Math.PI / 2 + tilt);
+    col.translate(dX, wheelY - Math.sin(tilt) * 0.14, wheelZ + Math.cos(tilt) * 0.14);
+    parts.add(col, S.dash);
+  }
+  // front seats
+  for (const x of [dX, -dX]) {
+    parts.box(x, seatH - 0.06, hipZ + 0.18, 0.5, 0.12, 0.5, seat);
+    if (seatH - 0.12 - floorY > 0.03) parts.box(x, (floorY + seatH - 0.12) / 2, hipZ + 0.18, 0.4, seatH - 0.12 - floorY, 0.4, S.seatFrame);
+    parts.box(x, seatH + 0.3, hipZ - 0.15, 0.5, 0.64, 0.11, seat, -0.22);
+    parts.box(x, seatH + 0.7, hipZ - 0.24, 0.26, 0.18, 0.1, seat, -0.22);
+    parts.box(x > 0 ? wI - 0.035 : -(wI - 0.035), seatH + 0.14, hipZ + 0.15, 0.07, 0.05, 0.55, S.dash);
+  }
+  // centre console + gear lever
+  const conLen = zDashBack - (hipZ - 0.15);
+  parts.box(0, (floorY + seatH + 0.05) / 2, hipZ - 0.15 + conLen / 2, 0.2, seatH + 0.05 - floorY, conLen, S.dash);
+  parts.cyl(0, seatH + 0.12, hipZ + 0.38, 0.011, 0.15, 'y', S.chrome, 8);
+  parts.add(new THREE.SphereGeometry(0.03, 10, 8).translate(0, seatH + 0.2, hipZ + 0.38), S.gloss);
+  // rear bench, or a cargo partition
+  if (!T.sporty && !T.vanRear && rearSeatZ - 0.35 > zRear) {
+    parts.box(0, seatH - 0.08, rearSeatZ + 0.16, wI * 2 - 0.12, 0.13, 0.48, seat);
+    parts.box(0, (floorY + seatH - 0.14) / 2, rearSeatZ + 0.16, wI * 2 - 0.2, Math.max(0.02, seatH - 0.14 - floorY), 0.4, S.seatFrame);
+    parts.box(0, seatH + 0.26, rearSeatZ - 0.13, wI * 2 - 0.12, 0.56, 0.11, seat, -0.2);
+    for (const x of [dX, -dX]) parts.box(x, seatH + 0.62, rearSeatZ - 0.2, 0.24, 0.15, 0.09, seat, -0.2);
+  } else if (T.vanRear) {
+    const pz = hipZ - 0.42;
+    parts.box(0, (floorY + g.roof - 0.08) / 2, pz, wI * 2, g.roof - 0.08 - floorY, 0.03, { color: [0.12, 0.12, 0.13], mr: [0.6, 0.5], cc: 0 });
+  }
+  return { driverX: dX, seatH, hipZ, maxScale, wheel: { x: dX, y: wheelY, z: wheelZ, tilt, r: 0.185 } };
+}
+
+// Steering wheel (rim, hub, three spokes, badge) built in its own frame: rim in the XY plane,
+// +Z towards the driver. Instanced for all cars and rotated with the steering.
+export function buildSteeringWheelGeometry() {
+  const parts = new PartList();
+  const rim = new THREE.TorusGeometry(0.185, 0.017, 8, 30);
+  parts.add(rim, { color: [0.02, 0.02, 0.02], mr: [0, 0.5], cc: 0 });
+  const hub = new THREE.CylinderGeometry(0.06, 0.065, 0.06, 18);
+  hub.rotateX(Math.PI / 2); hub.translate(0, -0.01, 0.02);
+  parts.add(hub, { color: [0.03, 0.03, 0.03], mr: [0, 0.6], cc: 0 });
+  for (const [x, y, w, h] of [[-0.11, -0.01, 0.13, 0.035], [0.11, -0.01, 0.13, 0.035], [0, -0.11, 0.035, 0.11]]) {
+    const sp = new THREE.BoxGeometry(w, h, 0.022); sp.translate(x, y, 0.01);
+    parts.add(sp, { color: [0.035, 0.035, 0.035], mr: [0.2, 0.5], cc: 0 });
+  }
+  const badge = new THREE.CylinderGeometry(0.018, 0.018, 0.01, 14);
+  badge.rotateX(Math.PI / 2); badge.translate(0, -0.01, 0.052);
+  parts.add(badge, S.chrome);
+  return parts.merge();
+}
+
+// Shared see-through tinted glass: more transparent head-on, more reflective at grazing angles.
+export const glassMaterial = new THREE.MeshPhysicalMaterial({
+  color: 0x0b1116, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.6, depthWrite: false,
+  clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.3,
+});
+glassMaterial.onBeforeCompile = (sh) => {
+  sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
+    float fres = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 2.2);
+    diffuseColor.a = mix(opacity, 0.93, fres);
+    #include <opaque_fragment>`);
+};
+glassMaterial.customProgramCacheKey = () => 'car-glass-v1';
+
 // ---------- model builder ----------
 const cache = new Map();
 
@@ -370,19 +513,26 @@ export function getCarModel(typeName) {
   let zs = rangeStations(zr, zf, 0.085);
   for (const a of [zFa, zRa]) zs.push(a - ra - 0.001, a - ra + 0.001, a + ra - 0.001, a + ra + 0.001);
   zs.push(zf - 0.02, zf - 0.06, zr + 0.02, zr + 0.06);
+  // the cabin opening runs from the windshield base back to the rear glass (or the pickup bed)
+  const zCabF = T.gh.ws, zCabR = T.bed ? T.bed : T.gh.rb;
+  zs.push(zCabF, zCabR);
   zs = [...new Set(zs.map((z) => Math.round(z * 10000) / 10000))].sort((a, b) => a - b);
   const rings = zs.map((z) => P.ring(z));
   loftStrip(rings, 0, 1, parts, S.under);
+  // body sides full length; the top surface is split so the cabin is open to the glass above
+  // (only the window-sill lip runs along the cabin)
+  loftStrip(rings, 1, 5, parts, S.paint);
+  const front = rings.filter((r) => r[0][2] >= zCabF - 0.0001);
+  const cabinR = rings.filter((r) => r[0][2] >= zCabR - 0.0001 && r[0][2] <= zCabF + 0.0001);
+  const back = rings.filter((r) => r[0][2] <= zCabR + 0.0001);
+  loftStrip(front, 5, 8, parts, S.paint);
+  loftStrip(cabinR, 5, 6, parts, S.paint);
   if (T.bed) {
-    // body sides full length, top split: covered bed (black tonneau) behind the cab
-    loftStrip(rings, 1, 5, parts, S.paint);
-    const front = rings.filter((r) => r[0][2] >= T.bed - 0.0001);
-    const back = rings.filter((r) => r[0][2] <= T.bed + 0.0001);
-    loftStrip(front, 5, 8, parts, S.paint);
+    // covered bed (black tonneau) behind the cab
     loftStrip(back, 5, 6, parts, S.paint);
     loftStrip(back, 6, 8, parts, S.plastic);
   } else {
-    loftStrip(rings, 1, 8, parts, S.paint);
+    loftStrip(back, 5, 8, parts, S.paint);
   }
   capRing(rings[rings.length - 1], true, parts, S.paint);
   capRing(rings[0], false, parts, S.paint);
@@ -395,13 +545,18 @@ export function getCarModel(typeName) {
     const a = Math.max(a0, g.rb), b = Math.min(a1, g.ws);
     if (b - a < 0.005) continue;
     loftStrip(ghStations(a, b), 0, 1, parts, kind === 'glass' ? S.glass : kind === 'black' ? S.gloss : S.paint);
+    if (kind !== 'glass') loftStrip(ghStations(a, b), 0, 1, parts, S.trim, true);
   }
   // roof rail band (A / C pillars follow the glass slope)
   loftStrip(ghStations(g.rb, g.ws), 1, 2, parts, T.sporty ? S.gloss : S.paint);
+  loftStrip(ghStations(g.rb, g.ws), 1, 2, parts, S.headliner, true);
   // windshield / roof / rear glass
   loftStrip(ghStations(g.rf, g.ws), 2, 4, parts, S.glass);
   loftStrip(ghStations(g.rr, g.rf), 2, 4, parts, T.sporty ? S.gloss : S.paint);
+  loftStrip(ghStations(g.rr, g.rf), 2, 4, parts, S.headliner, true);
   loftStrip(ghStations(g.rb, g.rr), 2, 4, parts, T.vanRear ? S.paint : S.glass);
+  if (T.vanRear) loftStrip(ghStations(g.rb, g.rr), 2, 4, parts, S.headliner, true);
+  const cabin = addInterior(typeName, T, P, parts);
 
   // ---- details ----
   const ytF = P.yt(zf), ybF = P.yb(zf), hwF = P.hw(zf);
@@ -557,8 +712,9 @@ export function getCarModel(typeName) {
   }
 
   const geometry = parts.merge();
+  const glassGeometry = parts.mergeGlass();
   const model = {
-    type: typeName, T, P, geometry,
+    type: typeName, T, P, geometry, glassGeometry, cabin,
     wheels: [
       { x: T.track / 2, z: zFa, front: true, left: true },
       { x: -T.track / 2, z: zFa, front: true, left: false },
@@ -724,6 +880,9 @@ export class CarVisual {
     this.body = new THREE.Mesh(this.model.geometry, this.material);
     this.body.castShadow = true; this.body.receiveShadow = true;
     this.group.add(this.body);
+    this.glass = new THREE.Mesh(this.model.glassGeometry, glassMaterial);
+    this.glass.receiveShadow = true;
+    this.group.add(this.glass);
     this.plates = new THREE.Mesh(makePlateGeometry(this.model, plateCounter++ % 56), plateMat);
     this.group.add(this.plates);
     // headlight light pools on the road (night)
