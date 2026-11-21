@@ -27,6 +27,8 @@ three.js loads from the jsDelivr CDN (pinned to 0.170.0), so the first load need
 
 **Driving**
 - Seven vehicle types: sedan, hatchback, SUV, sports car, taxi, panel van and pickup. Each body is lofted from cross-sections and has real wheel arches, projector headlights with LED daytime running lights, tail lights with separate brake, reverse and indicator sections, a third brake light, plates, mirrors, grille and trim.
+- See-through tinted glass and full interiors: dashboard with gauges and a screen, seats, console, door panels and headliner. In the back: rear benches with armrests, 2+2 seats in the sports car, luggage in the SUV, shelving and boxes in the van, and an open pickup bed with crates, a spare tyre and a toolbox.
+- Drivers sit in traffic cars, and you sit in yours. Steering wheels turn with the front wheels and the drivers' hands follow the rim. Press V for a cockpit view.
 - Rigid-body car physics: four raycast suspension struts, a slip-angle tyre model with a friction circle, weight transfer, anti-roll bars, an engine torque curve, an automatic 6-speed gearbox, brakes, handbrake drifts, and different grip on grass and pavement.
 - Skid marks, tyre smoke, crash impulses, and a flip-back-over recovery.
 

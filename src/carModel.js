@@ -411,7 +411,7 @@ function addInterior(typeName, T, P, parts) {
   const wheelZ = zDashBack - 0.13;
   const hipZ = wheelZ - 0.56;
   const rearSeatZ = hipZ - 0.88;
-  const zRear = T.vanRear ? g.rb + 0.08 : Math.max(g.rb + 0.04, P.zr + 0.3);
+  const zRear = T.vanRear ? g.rb + 0.08 : Math.max(g.rb + 0.04, P.zr + 0.12);
   const wI = Math.min(P.hw(hipZ), P.hw(zDashBack)) - 0.1;
   const beltMin = Math.min(P.yt(hipZ), P.yt(zDashBack), P.yt(Math.max(zRear, hipZ - 1.2))) - 0.035;
   const roofHead = P.roofY(hipZ - 0.1);
@@ -453,17 +453,120 @@ function addInterior(typeName, T, P, parts) {
   parts.box(0, (floorY + seatH + 0.05) / 2, hipZ - 0.15 + conLen / 2, 0.2, seatH + 0.05 - floorY, conLen, S.dash);
   parts.cyl(0, seatH + 0.12, hipZ + 0.38, 0.011, 0.15, 'y', S.chrome, 8);
   parts.add(new THREE.SphereGeometry(0.03, 10, 8).translate(0, seatH + 0.2, hipZ + 0.38), S.gloss);
-  // rear bench, or a cargo partition
-  if (!T.sporty && !T.vanRear && rearSeatZ - 0.35 > zRear) {
+  // ---------- the back of the cabin ----------
+  const sp = (c, r = 0.85, m = 0, cc = 0) => ({ color: c, mr: [m, r], cc });
+  const card = sp([0.3, 0.2, 0.1], 0.95), tape = sp([0.45, 0.38, 0.22], 0.6), wood = sp([0.2, 0.12, 0.055], 0.8);
+  const rack = sp([0.32, 0.33, 0.35], 0.4, 0.85), duffel = sp([0.05, 0.07, 0.04], 0.9), suitcase = sp([0.03, 0.045, 0.1], 0.45, 0, 0.3);
+  const shelfY = beltMin - 0.015;
+  const box = (...a) => parts.box(...a);
+  const crate = (x, y, z, w, h, d, ry = 0) => {
+    box(x, y + h / 2, z, w, h, d, card, 0, ry);
+    box(x, y + h + 0.002, z, w * 0.98, 0.004, 0.06, tape, 0, ry);
+  };
+  const seatPockets = () => { for (const x of [dX, -dX]) box(x, seatH + 0.2, hipZ - 0.225, 0.38, 0.3, 0.02, S.trim, -0.22); };
+  const parcelShelf = (z0, z1) => {
+    if (z1 - z0 < 0.08) return;
+    const zc = (z0 + z1) / 2;
+    box(0, shelfY, zc, wI * 2, 0.025, z1 - z0, S.trim);
+    for (const sx of [1, -1]) {
+      parts.cyl(sx * (wI - 0.28), shelfY + 0.016, zc, 0.07, 0.008, 'y', S.gloss, 18);
+      parts.cyl(sx * (wI - 0.28), shelfY + 0.02, zc, 0.024, 0.006, 'y', S.chrome, 12);
+    }
+  };
+  if (T.vanRear) {
+    // work van: steel partition behind the seats, plank floor, shelving on both sides, boxes
+    const pz = hipZ - 0.42;
+    // the van's upper walls lean in, so keep everything above the belt well inside them
+    box(0, (floorY + g.roof - 0.08) / 2, pz, (wI - 0.1) * 2, g.roof - 0.08 - floorY, 0.03, rack);
+    const c0 = zRear + 0.04, c1 = pz - 0.04, cm = (c0 + c1) / 2, cl = c1 - c0;
+    box(0, floorY + 0.012, cm, wI * 2 - 0.02, 0.024, cl, wood);
+    for (let x = -wI + 0.16; x < wI - 0.05; x += 0.24) box(x, floorY + 0.026, cm, 0.025, 0.006, cl, sp([0.1, 0.06, 0.03], 0.8));
+    for (const sx of [1, -1]) {
+      const rx = sx * (wI - 0.3);
+      for (const y of [floorY + 0.38, floorY + 0.82, floorY + 1.26]) box(rx, y, cm, 0.32, 0.025, cl - 0.2, rack);
+      for (let k = 0; k < 4; k++) box(rx + sx * 0.15, floorY + 0.68, c0 + 0.12 + k * (cl - 0.24) / 3, 0.03, 1.32, 0.03, rack);
+      crate(rx, floorY + 0.395, c0 + 0.45, 0.26, 0.24, 0.34, 0.08 * sx);
+      crate(rx, floorY + 0.395, c0 + 0.9, 0.27, 0.3, 0.38, -0.05);
+      crate(rx, floorY + 0.835, c1 - 0.55, 0.26, 0.28, 0.4, 0.1);
+      parts.cyl(rx, floorY + 1.4, c0 + 0.7, 0.09, 0.26, 'y', sp([0.55, 0.12, 0.05], 0.5, 0, 0.4), 14);
+    }
+    crate(0.12, floorY + 0.025, c0 + 0.55, 0.5, 0.36, 0.45, 0.25);
+    crate(-0.08, floorY + 0.385, c0 + 0.6, 0.38, 0.26, 0.34, -0.2);
+  } else if (T.bed) {
+    // pickup cab: storage shelf behind the seats with a folded jacket
+    seatPockets();
+    parcelShelf(zRear, hipZ - 0.3);
+    box(-0.2, shelfY + 0.05, (zRear + hipZ - 0.3) / 2, 0.42, 0.08, 0.2, sp([0.18, 0.1, 0.05], 0.8), 0, 0.2);
+  } else if (T.sporty) {
+    // 2+2: small, steeply reclined rear seats under the rear glass and a parcel deck behind them
+    const rz = hipZ - 0.72;
+    for (const x of [dX * 0.95, -dX * 0.95]) {
+      box(x, floorY + 0.19, rz + 0.12, 0.42, 0.1, 0.4, seat);
+      box(x, floorY + 0.43, rz - 0.13, 0.42, 0.44, 0.09, seat, -0.5);
+      box(x, floorY + 0.65, rz - 0.26, 0.22, 0.13, 0.08, seat, -0.5);
+    }
+    box(0, floorY + 0.14, rz, 0.24, 0.22, 0.5, S.dash);
+    seatPockets();
+    parcelShelf(zRear, rz - 0.36);
+    // a sports bag on the parcel deck
+    if (rz - 0.36 - zRear > 0.12) {
+      const bag = new THREE.CapsuleGeometry(0.09, 0.3, 4, 10);
+      bag.rotateZ(Math.PI / 2); bag.translate(0.15, shelfY + 0.1, (zRear + rz - 0.36) / 2);
+      parts.add(bag, duffel);
+    }
+  } else if (rearSeatZ - 0.35 > zRear) {
+    // rear bench with fold-down armrest, door armrests and map pockets on the front seat backs
     parts.box(0, seatH - 0.08, rearSeatZ + 0.16, wI * 2 - 0.12, 0.13, 0.48, seat);
     parts.box(0, (floorY + seatH - 0.14) / 2, rearSeatZ + 0.16, wI * 2 - 0.2, Math.max(0.02, seatH - 0.14 - floorY), 0.4, S.seatFrame);
     parts.box(0, seatH + 0.26, rearSeatZ - 0.13, wI * 2 - 0.12, 0.56, 0.11, seat, -0.2);
     for (const x of [dX, -dX]) parts.box(x, seatH + 0.62, rearSeatZ - 0.2, 0.24, 0.15, 0.09, seat, -0.2);
-  } else if (T.vanRear) {
-    const pz = hipZ - 0.42;
-    parts.box(0, (floorY + g.roof - 0.08) / 2, pz, wI * 2, g.roof - 0.08 - floorY, 0.03, { color: [0.12, 0.12, 0.13], mr: [0.6, 0.5], cc: 0 });
+    box(0, seatH + 0.08, rearSeatZ + 0.06, 0.22, 0.07, 0.36, seat);
+    for (const sx of [1, -1]) box(sx * (wI - 0.035), seatH + 0.12, rearSeatZ + 0.08, 0.07, 0.05, 0.42, S.dash);
+    seatPockets();
+    const backZ = rearSeatZ - 0.26;
+    if (typeName === 'suv' && backZ - zRear > 0.4) {
+      // cargo bay: mat, side trims, a suitcase and a duffel bag
+      const cm = (zRear + backZ) / 2;
+      box(0, floorY + 0.012, cm, wI * 2 - 0.02, 0.024, backZ - zRear, sp([0.035, 0.035, 0.038], 0.95));
+      for (const sx of [1, -1]) box(sx * (wI - 0.06), floorY + 0.2, cm, 0.12, 0.36, backZ - zRear - 0.05, S.trim);
+      box(0.22, floorY + 0.15, cm + 0.02, 0.62, 0.25, 0.44, suitcase, 0, 0.1);
+      box(0.22, floorY + 0.29, cm + 0.02, 0.18, 0.03, 0.04, S.gloss, 0, 0.1);
+      const bag = new THREE.CapsuleGeometry(0.13, 0.34, 4, 12);
+      bag.rotateZ(Math.PI / 2); bag.rotateY(0.3); bag.translate(-0.28, floorY + 0.15, cm - 0.05);
+      parts.add(bag, duffel);
+    } else {
+      // hatch / sedan: parcel shelf (cargo cover) behind the rear seats
+      parcelShelf(zRear, backZ);
+    }
   }
   return { driverX: dX, seatH, hipZ, maxScale, wheel: { x: dX, y: wheelY, z: wheelZ, tilt, r: 0.185 } };
+}
+
+function addPickupBed(T, P, parts) {
+  const liner = { color: [0.022, 0.022, 0.024], mr: [0, 0.92], cc: 0 };
+  const z1 = T.bed - 0.03, z0 = P.zr + 0.07;
+  const top = P.yt((z0 + z1) / 2) - 0.012;
+  const wB = Math.min(P.hw(z1), P.hw(z0 + 0.25)) - 0.2;
+  const bedY = top - 0.5;
+  parts.add(invertedBox(-wB, wB, bedY, top, z0, z1, ['py', 'ny']), liner);
+  const fl = new THREE.PlaneGeometry(wB * 2, z1 - z0);
+  fl.rotateX(-Math.PI / 2); fl.translate(0, bedY, (z0 + z1) / 2);
+  parts.add(fl, liner);
+  for (let x = -wB + 0.12; x < wB - 0.05; x += 0.18) parts.box(x, bedY + 0.008, (z0 + z1) / 2, 0.05, 0.016, z1 - z0 - 0.04, liner);
+  // wheel wells
+  for (const sx of [1, -1]) parts.box(sx * (wB - 0.12), bedY + 0.16, P.zRa, 0.24, 0.32, 0.95, liner);
+  // close the gap between the cab and the bed
+  parts.box(0, top - 0.005, (T.bed - 0.04 + T.gh.rb + 0.06) / 2, (P.hw(T.bed) - 0.07) * 2, 0.03, T.gh.rb + 0.06 - (T.bed - 0.04), S.paint);
+  // cross-bed toolbox resting on the rails
+  parts.box(0, top + 0.12, z1 - 0.21, wB * 2 + 0.26, 0.3, 0.36, { color: [0.62, 0.63, 0.65], mr: [1, 0.32], cc: 0 });
+  parts.box(0, top + 0.27, z1 - 0.21, wB * 2 + 0.2, 0.012, 0.3, { color: [0.5, 0.51, 0.53], mr: [1, 0.4], cc: 0 });
+  // cargo: wooden crates and a spare tyre
+  const wood = { color: [0.24, 0.15, 0.07], mr: [0, 0.8], cc: 0 };
+  parts.box(-0.25, bedY + 0.18, z0 + 0.45, 0.5, 0.36, 0.45, wood, 0, 0.15);
+  parts.box(0.3, bedY + 0.14, z0 + 0.95, 0.42, 0.28, 0.42, wood, 0, -0.2);
+  const tyre = new THREE.TorusGeometry(0.28, 0.1, 10, 22);
+  tyre.rotateX(Math.PI / 2); tyre.translate(0.2, bedY + 0.1, z1 - 0.75);
+  parts.add(tyre, S.rubber);
 }
 
 // Steering wheel (rim, hub, three spokes, badge) built in its own frame: rim in the XY plane,
@@ -528,9 +631,9 @@ export function getCarModel(typeName) {
   loftStrip(front, 5, 8, parts, S.paint);
   loftStrip(cabinR, 5, 6, parts, S.paint);
   if (T.bed) {
-    // covered bed (black tonneau) behind the cab
+    // open bed: rail caps on top, then a lined tub with wheel wells, a toolbox and cargo
     loftStrip(back, 5, 6, parts, S.paint);
-    loftStrip(back, 6, 8, parts, S.plastic);
+    addPickupBed(T, P, parts);
   } else {
     loftStrip(back, 5, 8, parts, S.paint);
   }
