@@ -69,17 +69,25 @@ const baseCarMaterial = new THREE.MeshPhysicalMaterial({
 baseCarMaterial.onBeforeCompile = function (sh) {
   const u = this.userData;
   sh.uniforms.uPaint = u.uPaint; sh.uniforms.uPaintMR = u.uPaintMR;
-  sh.uniforms.uLights = u.uLights; sh.uniforms.uInd = u.uInd;
+  sh.uniforms.uLights = u.uLights; sh.uniforms.uInd = u.uInd; sh.uniforms.uFlake = u.uFlake;
   sh.vertexShader = sh.vertexShader
     .replace('#include <common>', `#include <common>
       attribute vec3 mrc; attribute float paint; attribute float emi;
-      varying vec3 vMRC; varying float vPaint; varying float vEmi;`)
+      varying vec3 vMRC; varying float vPaint; varying float vEmi; varying vec3 vObjPos;`)
     .replace('#include <begin_vertex>', `#include <begin_vertex>
-      vMRC = mrc; vPaint = paint; vEmi = emi;`);
+      vMRC = mrc; vPaint = paint; vEmi = emi; vObjPos = position;`);
   sh.fragmentShader = sh.fragmentShader
     .replace('#include <common>', `#include <common>
-      uniform vec3 uPaint; uniform vec2 uPaintMR; uniform vec4 uLights; uniform vec3 uInd;
-      varying vec3 vMRC; varying float vPaint; varying float vEmi;`)
+      uniform vec3 uPaint; uniform vec2 uPaintMR; uniform vec4 uLights; uniform vec3 uInd; uniform float uFlake;
+      varying vec3 vMRC; varying float vPaint; varying float vEmi; varying vec3 vObjPos;`)
+    .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      // metallic flakes: tiny randomly tilted facets under the clear coat, faded with distance
+      if (vPaint > 0.5 && uFlake > 0.0) {
+        vec3 cell = floor(vObjPos * 420.0);
+        vec3 rnd = fract(sin(vec3(dot(cell, vec3(12.9898, 78.233, 37.719)), dot(cell, vec3(39.346, 11.135, 83.155)), dot(cell, vec3(73.156, 52.235, 9.151)))) * 43758.5453) - 0.5;
+        float near = clamp(1.0 - length(vViewPosition) / 7.0, 0.0, 1.0);
+        normal = normalize(normal + rnd * uFlake * near);
+      }`)
     .replace('#include <color_fragment>', `#include <color_fragment>
       diffuseColor.rgb = mix(diffuseColor.rgb, uPaint, vPaint);`)
     .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(vMRC.y, uPaintMR.y, vPaint);')
@@ -101,7 +109,7 @@ baseCarMaterial.onBeforeCompile = function (sh) {
       totalEmissiveRadiance += diffuseColor.rgb * ei;
     `);
 };
-baseCarMaterial.customProgramCacheKey = () => 'car-body-v2';
+baseCarMaterial.customProgramCacheKey = () => 'car-body-v3';
 
 export function makeCarMaterial(paintHex, metallic = true) {
   const m = baseCarMaterial.clone();
@@ -113,6 +121,7 @@ export function makeCarMaterial(paintHex, metallic = true) {
     uPaintMR: { value: new THREE.Vector2(metallic ? 0.55 : 0.05, metallic ? 0.32 : 0.42) },
     uLights: { value: new THREE.Vector4(0, 0, 0, 0) },
     uInd: { value: new THREE.Vector3(0, 0, 1) },
+    uFlake: { value: metallic ? 0.07 : 0 },
   };
   return m;
 }
@@ -120,7 +129,8 @@ export function makeCarMaterial(paintHex, metallic = true) {
 // ---------- part specs ----------
 const S = {
   paint: { color: [1, 1, 1], mr: [0.5, 0.3], cc: 1, paint: 1 },
-  glass: { color: [0.006, 0.008, 0.011], mr: [0.0, 0.04], cc: 0.55, glass: true },
+  glass: { color: [0.0034, 0.0056, 0.008], mr: [0.0, 0.04], cc: 0.55, glass: true, alpha: 0.6 },
+  lens: { color: [0.75, 0.78, 0.8], mr: [0.0, 0.02], cc: 1, glass: true, alpha: 0.05 },
   black: { color: [0.025, 0.025, 0.027], mr: [0.0, 0.55], cc: 0.3 },
   gloss: { color: [0.01, 0.01, 0.012], mr: [0.0, 0.2], cc: 1 },
   plastic: { color: [0.05, 0.05, 0.052], mr: [0.0, 0.75], cc: 0 },
@@ -177,7 +187,8 @@ class PartList {
     for (let i = 0; i < n; i++) {
       col[i * 3] = spec.color[0]; col[i * 3 + 1] = spec.color[1]; col[i * 3 + 2] = spec.color[2];
       mrc[i * 3] = spec.mr[0]; mrc[i * 3 + 1] = spec.mr[1]; mrc[i * 3 + 2] = spec.cc ?? 0;
-      pt[i] = spec.paint || 0; em[i] = spec.emi || 0;
+      // the glass layer reuses the paint channel for opacity
+      pt[i] = spec.glass ? (spec.alpha ?? 0.6) : (spec.paint || 0); em[i] = spec.emi || 0;
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('mrc', new THREE.BufferAttribute(mrc, 3));
@@ -244,7 +255,7 @@ function interp(pts, z) {
 function makeProfile(T) {
   const zf = T.L / 2, zr = -T.L / 2;
   const zFa = T.wb / 2 + T.axleOff, zRa = -T.wb / 2 + T.axleOff;
-  const ra = T.R + 0.06, cy = T.R + 0.03;
+  const ra = T.R + 0.045, cy = T.R + 0.03;
   const endE = (z) => {
     const ef = clamp((z - (zf - 0.32)) / 0.32, 0, 1), er = clamp(((zr + 0.28) - z) / 0.28, 0, 1);
     return Math.max(ef, er);
@@ -252,7 +263,7 @@ function makeProfile(T) {
   const hw = (z) => {
     const e = endE(z);
     const mid = 1 - 0.02 * Math.pow(Math.abs(z) / zf, 2);
-    return (T.W / 2) * mid * (1 - 0.075 * Math.pow(e, 2.2));
+    return (T.W / 2) * mid * (1 - 0.12 * Math.pow(e, 1.9));
   };
   const yt = (z) => interp(T.top, z) - 0.035 * Math.pow(endE(z), 2);
   const yb = (z) => {
@@ -590,16 +601,40 @@ export function buildSteeringWheelGeometry() {
 
 // Shared see-through tinted glass: more transparent head-on, more reflective at grazing angles.
 export const glassMaterial = new THREE.MeshPhysicalMaterial({
-  color: 0x0b1116, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.6, depthWrite: false,
-  clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.3,
+  color: 0xffffff, vertexColors: true, roughness: 0.04, metalness: 0, transparent: true, opacity: 1, depthWrite: false,
+  clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.4,
 });
 glassMaterial.onBeforeCompile = (sh) => {
-  sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float paint;\nvarying float vAlpha;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvAlpha = paint;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying float vAlpha;')
+    .replace('#include <opaque_fragment>', `
     float fres = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 2.2);
-    diffuseColor.a = mix(opacity, 0.93, fres);
+    diffuseColor.a = mix(vAlpha, 0.93, fres);
     #include <opaque_fragment>`);
 };
-glassMaterial.customProgramCacheKey = () => 'car-glass-v1';
+glassMaterial.customProgramCacheKey = () => 'car-glass-v2';
+
+// Soft dark footprint under every car (ambient occlusion where the body meets the road).
+let contactTex = null;
+function contactShadowTexture() {
+  if (contactTex) return contactTex;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.shadowColor = 'rgba(0,0,0,1)'; ctx.shadowBlur = 24; ctx.shadowOffsetX = 1000;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-1000 + 30, 30, 68, 196, 24); else ctx.rect(-1000 + 30, 30, 68, 196);
+  ctx.fill();
+  contactTex = new THREE.CanvasTexture(c);
+  return contactTex;
+}
+export const contactShadowMaterial = new THREE.MeshBasicMaterial({
+  color: 0x000000, transparent: true, opacity: 0.82, depthWrite: false,
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+});
 
 // ---------- model builder ----------
 const cache = new Map();
@@ -610,7 +645,7 @@ export function getCarModel(typeName) {
   const P = makeProfile(T);
   const parts = new PartList();
   const { zf, zr, zFa, zRa } = P;
-  const ra = T.R + 0.06;
+  const ra = T.R + 0.045;
 
   // ---- lower body ----
   let zs = rangeStations(zr, zf, 0.085);
@@ -686,6 +721,68 @@ export function getCarModel(typeName) {
     parts.box(hx, hy, hz, 0.025, 0.035, 0.17, T.chromeBelt ? S.chrome : S.paint);
     parts.box(-hx, hy, hz, 0.025, 0.035, 0.17, T.chromeBelt ? S.chrome : S.paint);
   }
+  // wheel-arch lips: a rolled edge following each arch opening
+  for (const a of [zFa, zRa]) {
+    const pts = [];
+    for (let k = 0; k <= 18; k++) {
+      const z = a - ra + (2 * ra) * (k / 18);
+      const y = P.yb(z) + 0.012;
+      pts.push(new THREE.Vector3(P.sideX(z, y + 0.03) + 0.006, y, z));
+    }
+    for (const sx of [1, -1]) {
+      const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p.x * sx, p.y, p.z)));
+      parts.add(new THREE.TubeGeometry(curve, 24, 0.016, 5, false), T.cladding ? S.plastic : S.paint);
+    }
+  }
+  // shoulder feature line catching the light along the flank
+  {
+    const pts = [];
+    const z0 = zr + 0.35, z1 = zf - 0.35;
+    for (let k = 0; k <= 24; k++) {
+      const z = z0 + (z1 - z0) * (k / 24);
+      const ym = P.yb(0) + (P.yt(z) - P.yb(0)) * 0.62;
+      pts.push(new THREE.Vector3(P.sideX(z, ym) + 0.0015, ym, z));
+    }
+    for (const sx of [1, -1]) {
+      const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p.x * sx, p.y, p.z)));
+      parts.add(new THREE.TubeGeometry(curve, 40, 0.0055, 4, false), S.paint);
+    }
+  }
+  // panel shut lines on the hood and boot lid
+  {
+    const topY = (z, x) => {
+      const r = P.ring(z);
+      for (let k = 5; k < 8; k++) {
+        const a = r[k], b = r[k + 1];
+        if (x <= a[0] && x >= b[0]) return a[1] + (b[1] - a[1]) * ((a[0] - x) / Math.max(1e-6, a[0] - b[0]));
+      }
+      return r[8][1];
+    };
+    const seam = (pts) => {
+      if (pts.length < 2) return;
+      parts.add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, 0.0032, 3, false), S.under);
+    };
+    const hoodLine = (z0, z1, inset) => {
+      for (const sx of [1, -1]) {
+        const pts = [];
+        for (let k = 0; k <= 10; k++) {
+          const z = z0 + (z1 - z0) * (k / 10), x = P.hw(z) - inset;
+          pts.push(new THREE.Vector3(sx * x, topY(z, x) + 0.003, z));
+        }
+        seam(pts);
+      }
+      // the lid's leading / trailing edge across the car
+      const ze = z1 > z0 ? z1 : z1;
+      const pts = [];
+      for (let k = 0; k <= 12; k++) {
+        const x = -(P.hw(ze) - inset) + 2 * (P.hw(ze) - inset) * (k / 12);
+        pts.push(new THREE.Vector3(x, topY(ze, Math.abs(x)) + 0.003, ze));
+      }
+      seam(pts);
+    };
+    hoodLine(g.ws + 0.06, zf - 0.07, 0.17);
+    if (!T.vanRear && !T.bed && g.rb - (zr + 0.12) > 0.25) hoodLine(g.rb - 0.04, zr + 0.1, 0.16);
+  }
   // side cladding / skirts
   if (T.cladding || T.sporty) {
     const y = P.yb(0) + 0.07;
@@ -701,50 +798,58 @@ export function getCarModel(typeName) {
       parts.box(s * (mx + 0.08), my - 0.05, mz + 0.035, 0.12, 0.012, 0.03, s > 0 ? S.indL : S.indR);
     }
   }
-  // ---- front: grille (bars both ways), headlights (asymmetric internals), plate, badge ----
+  // ---- front: slim wrap-around LED headlights, slim upper grille, wide lower intake ----
   {
-    const gw = hwF * (T.sporty ? 0.9 : 0.95), gy = ybF + (ytF - ybF) * (T.sporty ? 0.28 : 0.4), gh = (ytF - ybF) * (T.sporty ? 0.3 : 0.36);
-    parts.box(0, gy, fz, gw, gh, 0.03, S.gloss);
-    const nb = 5, nv = 9;
-    for (let i = 0; i < nb; i++) parts.box(0, gy - gh / 2 + (i + 0.5) * gh / nb, fz + 0.016, gw * 0.96, 0.012, 0.014, S.plastic);
-    for (let i = 0; i < nv; i++) parts.box(-gw / 2 + (i + 0.5) * gw / nv, gy, fz + 0.018, 0.01, gh * 0.96, 0.012, S.plastic);
-    parts.box(0, gy + gh / 2 + 0.012, fz + 0.012, gw * 1.02, 0.02, 0.02, S.chrome);
-    // badge (generic oval)
-    parts.cyl(0, gy + gh * 0.15, fz + 0.03, 0.045, 0.012, 'z', S.chrome, 16);
-    // lower lip / splitter
-    parts.box(0, ybF + 0.025, fz - 0.01, hwF * 1.9, 0.05, 0.07, S.plastic);
-    if (T.sporty) parts.box(0, ybF - 0.01, fz + 0.02, hwF * 1.85, 0.015, 0.12, S.gloss);
-    // fog lights
+    const tall = !!(T.vanRear || T.bed || typeName === 'suv');
+    const hh = T.sporty ? 0.055 : tall ? 0.085 : 0.068;
+    const hwid = T.sporty ? 0.5 : tall ? 0.5 : 0.54;
+    const hy = ytF - hh / 2 - (T.sporty ? 0.025 : 0.035);
+    const faceH = ytF - ybF;
+    // upper grille between the lamps (slim, dark gloss with a fine mesh)
+    const ugW = Math.max(0.3, 2 * (hwF - hwid - 0.05)), ugH = T.sporty ? 0.04 : hh * (tall ? 1.6 : 1.0);
+    const ugY = hy - (tall ? hh * 0.3 : 0);
+    parts.box(0, ugY, fz - 0.002, ugW, ugH, 0.02, S.gloss);
+    for (let i = 1; i < 4; i++) parts.box(0, ugY - ugH / 2 + i * ugH / 4, fz + 0.009, ugW * 0.96, 0.004, 0.006, S.plastic);
+    parts.cyl(0, ugY, fz + 0.012, 0.038, 0.01, 'z', S.chrome, 18); // generic badge
+    // lower intake: wide, recessed, with a fine honeycomb-like grid
+    const liW = hwF * (T.sporty ? 1.45 : 1.25), liY = ybF + faceH * (T.sporty ? 0.22 : 0.3), liH = faceH * (T.sporty ? 0.26 : 0.3);
+    parts.box(0, liY, fz - 0.004, liW, liH, 0.02, S.gloss);
+    for (let i = 1; i < 5; i++) parts.box(0, liY - liH / 2 + i * liH / 5, fz + 0.004, liW * 0.97, 0.005, 0.008, S.plastic);
+    for (let i = 1; i < 16; i++) parts.box(-liW / 2 + i * liW / 16, liY, fz + 0.004, 0.005, liH * 0.95, 0.008, S.plastic);
+    // corner intakes with slim LED fog lights
     for (const s of [1, -1]) {
-      parts.cyl(s * (hwF - 0.22), ybF + 0.1, fz + 0.005, 0.045, 0.02, 'z', S.chrome, 14);
-      parts.cyl(s * (hwF - 0.22), ybF + 0.1, fz + 0.016, 0.036, 0.01, 'z', S.head, 14);
+      const cx = s * (hwF - 0.13);
+      parts.box(cx, liY, fz - 0.003, 0.16, liH * 0.8, 0.02, S.gloss);
+      parts.box(cx, liY + liH * 0.25, fz + 0.01, 0.11, 0.012, 0.008, S.head);
     }
-    // headlights
-    const hy = ytF - (T.sporty ? 0.075 : 0.11), hwid = T.sporty ? 0.46 : 0.48, hh = T.sporty ? 0.095 : 0.15;
+    // thin lower lip (black) and, for the sports car, a splitter
+    parts.box(0, ybF + 0.015, fz - 0.015, hwF * 1.8, 0.03, 0.06, S.plastic);
+    if (T.sporty) parts.box(0, ybF - 0.005, fz + 0.01, hwF * 1.75, 0.01, 0.08, S.gloss);
+    // headlights: dark housing, small projector, LED cells, DRL strip along the top, indicator,
+    // and a return around the corner onto the fender
     for (const s of [1, -1]) {
-      const hx = s * (hwF - hwid / 2 - 0.03);
-      parts.box(hx, hy, fz + 0.005, hwid, hh, 0.03, S.housing);
-      // projector in a chrome ring (inner side)
+      const hx = s * (hwF - hwid / 2 - 0.02);
+      parts.box(hx, hy, fz + 0.004, hwid, hh, 0.03, S.housing);
       const px = hx - s * (hwid / 2 - 0.07);
-      parts.cyl(px, hy - 0.005, fz + 0.02, 0.04, 0.02, 'z', S.chrome, 16);
-      parts.cyl(px, hy - 0.005, fz + 0.028, 0.03, 0.012, 'z', S.head, 16);
-      // LED row (middle)
-      for (let k = 0; k < 3; k++) parts.box(hx + s * (-0.03 + k * 0.045), hy - 0.015, fz + 0.022, 0.032, 0.03, 0.01, S.head);
-      // L-shaped DRL: along the top and down the outer edge
-      parts.box(hx, hy + hh / 2 - 0.012, fz + 0.024, hwid * 0.92, 0.012, 0.008, S.drl);
-      parts.box(hx + s * (hwid / 2 - 0.018), hy, fz + 0.024, 0.012, hh * 0.8, 0.008, S.drl);
-      // amber indicator in the outer corner
-      parts.box(hx + s * (hwid / 2 - 0.05), hy - hh / 2 + 0.02, fz + 0.023, 0.05, 0.025, 0.008, s > 0 ? S.indL : S.indR);
-      // side marker (amber, flush)
-      const mz = zf - 0.16, my = hy - 0.02;
-      parts.box(s * (P.sideX(mz, my) + 0.003), my, mz, 0.006, 0.025, 0.07, S.amberMark);
+      parts.cyl(px, hy - hh * 0.1, fz + 0.019, 0.026, 0.018, 'z', S.chrome, 16);
+      parts.cyl(px, hy - hh * 0.1, fz + 0.026, 0.02, 0.01, 'z', S.head, 16);
+      for (let k = 0; k < 3; k++) parts.box(hx + s * (-0.06 + k * 0.05), hy - hh * 0.1, fz + 0.021, 0.036, hh * 0.35, 0.008, S.head);
+      parts.box(hx + s * 0.02, hy + hh / 2 - 0.009, fz + 0.022, hwid * 0.9, 0.009, 0.008, S.drl);
+      parts.box(hx + s * (hwid / 2 - 0.05), hy - hh * 0.25, fz + 0.021, 0.06, hh * 0.3, 0.008, s > 0 ? S.indL : S.indR);
+      parts.box(hx, hy, fz + 0.036, hwid + 0.01, hh + 0.01, 0.01, S.lens);
+      // corner return on the fender
+      const rz2 = zf - 0.13;
+      const rx = P.sideX(rz2, hy) + 0.003;
+      parts.box(s * rx, hy, rz2, 0.008, hh * 0.85, 0.2, S.housing);
+      parts.box(s * (rx + 0.004), hy + hh * 0.3, rz2, 0.006, 0.008, 0.18, S.drl);
+      parts.box(s * (rx + 0.004), hy - hh * 0.15, rz2 - 0.03, 0.006, hh * 0.25, 0.06, S.amberMark);
     }
     // plate frame (plate itself is a textured mesh)
-    parts.box(0, ybF + 0.2, fz + 0.006, 0.36, 0.19, 0.012, S.plastic);
+    parts.box(0, ybF + 0.2, fz + 0.002, 0.36, 0.19, 0.012, S.plastic);
   }
   // ---- rear: wrap tail lights with LED bars, reverse lights, third brake light, reflectors, exhaust ----
   {
-    const ty = ytR - (T.vanRear ? 0.3 : 0.11), tw = T.vanRear ? 0.16 : 0.42, th = T.vanRear ? 0.42 : 0.14;
+    const ty = ytR - (T.vanRear ? 0.3 : 0.09), tw = T.vanRear ? 0.16 : 0.44, th = T.vanRear ? 0.42 : 0.1;
     for (const s of [1, -1]) {
       const tx = s * (hwR - tw / 2 - 0.02);
       parts.box(tx, ty, rz - 0.004, tw, th, 0.03, S.tail);
@@ -766,6 +871,12 @@ export function getCarModel(typeName) {
         parts.cyl(ex, ybR + 0.02, rz - 0.02, 0.04, 0.12, 'z', S.chrome, 14);
         parts.cyl(ex, ybR + 0.02, rz - 0.078, 0.032, 0.005, 'z', S.exhaust, 14);
       }
+    }
+    // full-width light bar joining the two tail lamps (modern signature)
+    if (!T.vanRear && !T.bed) {
+      const barW = 2 * (hwR - tw - 0.02);
+      parts.box(0, ty + th * 0.15, rz - 0.004, barW, 0.035, 0.026, S.tail);
+      parts.box(0, ty + th * 0.15, rz - 0.019, barW * 0.98, 0.01, 0.006, S.tailLed);
     }
     // third brake light: at the top of the rear glass / roof edge
     const b3z = g.rb + (g.rr - g.rb) * 0.85, b3y = P.roofY(b3z) - 0.03;
@@ -872,7 +983,7 @@ export function makePlateGeometry(model, plateIndex) {
 // One instanced mesh for every rotating wheel (tyre + rim + disc) and one for calipers.
 function buildWheelGeometry(R, W, spokes = 5) {
   const parts = new PartList();
-  const rr = R * 0.66;
+  const rr = R * 0.73;
   // tyre: lathe of a rounded section, axis along X
   const prof = [];
   const sec = [[rr, -W / 2 + 0.01], [R - 0.045, -W / 2], [R - 0.012, -W / 2 + 0.025], [R, -W / 2 + 0.05], [R, W / 2 - 0.05], [R - 0.012, W / 2 - 0.025], [R - 0.045, W / 2], [rr, W / 2 - 0.01]];
@@ -880,6 +991,12 @@ function buildWheelGeometry(R, W, spokes = 5) {
   const tyre = new THREE.LatheGeometry(prof, 26);
   tyre.rotateZ(Math.PI / 2);
   parts.add(tyre, S.rubber);
+  // tread: circumferential grooves
+  for (const gx of [-W * 0.25, 0, W * 0.25]) {
+    const groove = new THREE.TorusGeometry(R - 0.002, 0.005, 4, 32);
+    groove.rotateY(Math.PI / 2); groove.translate(gx, 0, 0);
+    parts.add(groove, { color: [0.006, 0.006, 0.006], mr: [0, 0.95], cc: 0 });
+  }
   // sidewall ring detail (raised lettering band)
   const band = new THREE.TorusGeometry((R + rr) / 2 + 0.01, 0.006, 4, 26);
   band.rotateY(Math.PI / 2); band.translate(W / 2 - 0.005, 0, 0);
@@ -923,7 +1040,7 @@ function buildWheelGeometry(R, W, spokes = 5) {
 
 function buildCaliperGeometry(R, W, red) {
   const parts = new PartList();
-  const rr = R * 0.66;
+  const rr = R * 0.73;
   const g = new THREE.BoxGeometry(0.06, rr * 0.5, rr * 0.3);
   g.translate(0.02, rr * 0.62, 0);
   g.rotateX(-0.7);
@@ -939,7 +1056,7 @@ export class WheelRenderer {
     this.material.onBeforeCompile = baseCarMaterial.onBeforeCompile;
     this.material.customProgramCacheKey = baseCarMaterial.customProgramCacheKey;
     this.material.userData = {
-      uPaint: { value: new THREE.Vector3(1, 1, 1) }, uPaintMR: { value: new THREE.Vector2(0, 0.5) },
+      uPaint: { value: new THREE.Vector3(1, 1, 1) }, uPaintMR: { value: new THREE.Vector2(0, 0.5) }, uFlake: { value: 0 },
       uLights: { value: new THREE.Vector4() }, uInd: { value: new THREE.Vector3() },
     };
     this.meshes = new Map(); // key -> {wheel, caliper, n}
@@ -983,6 +1100,16 @@ export class CarVisual {
     this.body = new THREE.Mesh(this.model.geometry, this.material);
     this.body.castShadow = true; this.body.receiveShadow = true;
     this.group.add(this.body);
+    if (!contactShadowMaterial.map) { contactShadowMaterial.map = contactShadowTexture(); contactShadowMaterial.needsUpdate = true; }
+    if (!this.model.contactGeo) {
+      const cg = new THREE.PlaneGeometry(this.T.W + 0.55, this.T.L + 0.75);
+      cg.rotateX(-Math.PI / 2);
+      this.model.contactGeo = cg;
+    }
+    this.contact = new THREE.Mesh(this.model.contactGeo, contactShadowMaterial);
+    this.contact.position.y = 0.025;
+    this.contact.renderOrder = 1;
+    this.group.add(this.contact);
     this.glass = new THREE.Mesh(this.model.glassGeometry, glassMaterial);
     this.glass.receiveShadow = true;
     this.group.add(this.glass);

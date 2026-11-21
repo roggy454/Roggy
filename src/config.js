@@ -22,14 +22,14 @@ export const lineCoord = (i) => -CITY_HALF + i * GRID;
 export const QUALITY = {
   low: {
     pixelRatio: 0.75, shadows: false, shadowSize: 1024, grass: 0.25, trees: 0.5,
-    bloom: false, cars: 26, peds: 18, drivers: 6, texSize: 512, pointLights: 0, msaa: 0,
+    bloom: false, cars: 26, peds: 18, drivers: 6, texSize: 512, pointLights: 0, msaa: 0, probe: 0,
   },
   medium: {
     pixelRatio: 1.0, shadows: true, shadowSize: 2048, grass: 0.6, trees: 0.8,
-    bloom: true, cars: 38, peds: 30, drivers: 10, texSize: 1024, pointLights: 2, msaa: 0,
+    bloom: true, cars: 38, peds: 30, drivers: 10, texSize: 1024, pointLights: 2, msaa: 0, probe: 128, probeEvery: 0.8,
   },
   high: {
     pixelRatio: 1.5, shadows: true, shadowSize: 4096, grass: 1.0, trees: 1.0,
-    bloom: true, cars: 50, peds: 42, drivers: 14, texSize: 1024, pointLights: 4, msaa: 4,
+    bloom: true, cars: 50, peds: 42, drivers: 14, texSize: 1024, pointLights: 4, msaa: 4, probe: 256, probeEvery: 0.4,
   },
 };

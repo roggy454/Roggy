@@ -143,6 +143,13 @@ class Game {
     this.headlight.target.position.set(0, 0, 18);
     scene.add(this.headlight); scene.add(this.headlight.target);
 
+    // what the reflection probe sees: sky, terrain, water, roads, sidewalks, buildings, street furniture
+    const reflect = (o) => o.traverse((c) => c.layers.enable(1));
+    reflect(city.group);
+    scene.children.filter((c) => c.name === 'terrain' || c.name === 'water').forEach(reflect);
+    if (this.qName === 'high') reflect(this.trees.group);
+    for (const l of this.lampLights) l.layers.enable(1);
+
     await setLoad(0.92, 'Spawning traffic…');
     this.traffic.populate(this.player.pos, true);
     this.peds.populate(this.player.pos, true);
@@ -189,6 +196,7 @@ class Game {
     // warm up shaders with one frame
     this.updateCamera(0.016);
     this.sky.update(0, this.player.pos, this.camera);
+    this.sky.updateProbe(0, this.player.pos, true);
     this.render();
     $('loading').hidden = true;
     $('start').hidden = false;
@@ -371,6 +379,7 @@ class Game {
     this.updateCamera(dt);
     this.sky.update(dt, focus, this.camera);
     this.updateLights(dt);
+    this.sky.updateProbe(dt, focus);
     this.grass.update(this.camera.position);
     this.terrain.waterNormal.offset.set(globalUniforms.uTime.value * 0.004, globalUniforms.uTime.value * 0.0025);
 

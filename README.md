@@ -26,7 +26,8 @@ three.js loads from the jsDelivr CDN (pinned to 0.170.0), so the first load need
 - Full day/night cycle (one game hour = 50 s): sky dome, sun and moon, stars, matching fog, shadows, street lamps with light pools, bloom at night.
 
 **Driving**
-- Seven vehicle types: sedan, hatchback, SUV, sports car, taxi, panel van and pickup. Each body is lofted from cross-sections and has real wheel arches, projector headlights with LED daytime running lights, tail lights with separate brake, reverse and indicator sections, a third brake light, plates, mirrors, grille and trim.
+- Seven vehicle types: sedan, hatchback, SUV, sports car, taxi, panel van and pickup. Each body is lofted from cross-sections and has wheel arches with rolled lips, a shoulder feature line, and hood and boot shut lines. Up front are slim wrap-around LED headlights under clear lenses, a slim upper grille and a wide lower intake. At the back is a full-width light bar with separate brake, reverse and indicator sections, plus a third brake light, plates and mirrors. Wheels have big rims, low-profile tyres with tread grooves, brake discs and calipers.
+- Metallic paint with flakes under a clear coat. Paint and glass reflect the actual city around you through a live reflection probe, including lit windows at night. A soft contact shadow grounds every car.
 - See-through tinted glass and full interiors: dashboard with gauges and a screen, seats, console, door panels and headliner. In the back: rear benches with armrests, 2+2 seats in the sports car, luggage in the SUV, shelving and boxes in the van, and an open pickup bed with crates, a spare tyre and a toolbox.
 - Drivers sit in traffic cars, and you sit in yours. Steering wheels turn with the front wheels and the drivers' hands follow the rim. Press V for a cockpit view.
 - Rigid-body car physics: four raycast suspension struts, a slip-angle tyre model with a friction circle, weight transfer, anti-roll bars, an engine torque curve, an automatic 6-speed gearbox, brakes, handbrake drifts, and different grip on grass and pavement.
@@ -37,7 +38,7 @@ three.js loads from the jsDelivr CDN (pinned to 0.170.0), so the first load need
 - Hit an NPC car and it gets shoved, spins, then finds its way back into its lane.
 - Pedestrians walk the sidewalks, wait for the walk signal before crossing, stand around on their phones, jump out of the way of speeding cars, and get back up if they're knocked down.
 - Carjack any car: the driver bails out and runs off.
-- Characters are skinned 3D models with procedural walk, run, idle, jump and fall animations.
+- Characters are skinned 3D models with procedural walk, run, idle, jump and fall animations, and they blink. Heads are sculpted, with eye sockets, cheekbones, a jaw and chin, a nose, lips and ears. Eyes have irises, pupils, lids and lashes. Hair uses strand cards, and hands have fingers. Clothes carry seams, pockets, collars, zips, belts and sneakers with soles and laces. A detail shader adds skin pores, knit, denim twill, leather grain and soft fabric folds.
 
 **Radio**
 

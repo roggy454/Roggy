@@ -150,6 +150,15 @@ export class SkySystem {
     this.envRT = null;
     this.lastEnvTime = -999;
 
+    // live reflection probe: a cube camera that sees only layer 1 (sky, ground, roads, buildings)
+    if (quality.probe) {
+      this.probeRT = new THREE.WebGLCubeRenderTarget(quality.probe, { type: THREE.HalfFloatType });
+      this.probeCam = new THREE.CubeCamera(0.5, 3000, this.probeRT);
+      for (const c of this.probeCam.children) c.layers.set(1);
+      for (const o of [this.sun, this.hemi, this.sky, this.stars, this.moon]) o.layers.enable(1);
+      this.probeEnv = null;
+      this.probeTimer = 0;
+    }
     this.sunDir = new THREE.Vector3();
     this.moonDir = new THREE.Vector3();
     this.night = 0;
@@ -238,9 +247,31 @@ export class SkySystem {
     this.envRingMat.color.setRGB(0.35, 0.37, 0.4).lerp(new THREE.Color(0.16, 0.12, 0.08), this.night);
     const old = this.envRT;
     this.envRT = this.pmrem.fromScene(this.envScene, 0.02, 0.1, 400);
-    this.scene.environment = this.envRT.texture;
-    this.scene.environmentIntensity = lerp(1.0, 0.7, this.night);
+    if (!this.probeEnv) {
+      this.scene.environment = this.envRT.texture;
+      this.scene.environmentIntensity = lerp(1.0, 0.7, this.night);
+    }
     if (old) old.dispose();
+  }
+
+  // Capture the real surroundings (buildings, roads, lit windows, sky) for reflections.
+  updateProbe(dt, focus, force = false) {
+    if (!this.probeCam) return;
+    this.probeTimer -= dt;
+    if (!force && this.probeTimer > 0) return;
+    this.probeTimer = this.quality.probeEvery || 0.8;
+    const r = this.renderer;
+    this.probeCam.position.set(focus.x, focus.y + 2.2, focus.z);
+    const skyPos = this.sky.position.clone(), starPos = this.stars.position.clone();
+    this.sky.position.copy(this.probeCam.position); this.stars.position.copy(this.probeCam.position);
+    const autoShadow = r.shadowMap.autoUpdate;
+    r.shadowMap.autoUpdate = false;
+    this.probeCam.update(r, this.scene);
+    r.shadowMap.autoUpdate = autoShadow;
+    this.sky.position.copy(skyPos); this.stars.position.copy(starPos);
+    this.probeEnv = this.pmrem.fromCubemap(this.probeRT.texture, this.probeEnv);
+    this.scene.environment = this.probeEnv.texture;
+    this.scene.environmentIntensity = lerp(1.0, 0.9, this.night);
   }
 
   clockString() {

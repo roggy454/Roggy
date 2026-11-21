@@ -408,6 +408,13 @@ export class Vehicle {
     vis.group.quaternion.copy(this.quat);
     _v.set(0, -this.comH, 0).applyQuaternion(this.quat);
     vis.group.position.copy(this.pos).add(_v);
+    // keep the contact shadow on the ground (and fade it out when airborne)
+    if (vis.contact) {
+      const gy = this.world.terrain.heightAt(this.pos.x, this.pos.z);
+      const lift = Math.max(0, vis.group.position.y - gy);
+      vis.contact.position.y = 0.025 - lift;
+      vis.contact.scale.setScalar(Math.max(0.2, 1 - lift * 0.6));
+    }
     vis.wheelSteer = this.steer;
     const base = this.restLen - this.staticComp;
     this.wheels.forEach((w, i) => {
