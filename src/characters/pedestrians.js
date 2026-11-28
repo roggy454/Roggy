@@ -7,6 +7,7 @@ import { Animator } from './animator.js';
 import { slabs, groundHeight, surfaceAt, BEACH, SIDEWALK_W, CURB_H } from '../world/map.js';
 import { RNG, clamp, damp, dampAngle, lerp } from '../core/utils.js';
 import { STATE, U } from '../core/globals.js';
+const humanQ = () => (STATE.quality === 'low' ? 1 : 2);
 
 function pathFor(s, rng) {
   if (s.ring) {
@@ -49,7 +50,7 @@ export class Pedestrians {
   }
 
   make(look) {
-    const h = new Human(look);
+    const h = new Human(look, humanQ());
     const anim = new Animator(h);
     h.root.traverse((o) => o.layers.set(1)); // keep crowds out of the mirror pass
     this.game.scene.add(h.root);
@@ -119,7 +120,7 @@ export class Pedestrians {
     }
   }
 
-  dispose(ped) { this.game.scene.remove(ped.root); }
+  dispose(ped) { this.game.scene.remove(ped.root); ped.h.dispose?.(); }
 
   update(dt, focus, vehicles) {
     const target = STATE.q.peds;

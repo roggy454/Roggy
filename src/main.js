@@ -148,6 +148,8 @@ class Game {
       this.traffic.spawnShowcase(-97.5, 26.5, Math.PI / 2, 'suv', [0.05, 0.05, 0.06]),
       this.traffic.spawnShowcase(-97.5, 17.5, Math.PI / 2, 'sedan', [0.75, 0.76, 0.78]),
     ];
+    for (const v of this.showcase) v.ensureDetail();
+    this.buildQueue = new Set();
     this.traffic.spawnParked();
     // drop random parked cars that overlap the showcase
     this.traffic.parked = this.traffic.parked.filter((v) => {
@@ -317,6 +319,14 @@ class Game {
     updateFarLights(night);
     this.audio.update(dt, this);
     this.hud.update(dt);
+    // build at most one high-detail car per frame (closest first) to avoid hitches
+    if (this.buildQueue.size) {
+      let best = null, bd = Infinity;
+      const c = this.camera.position;
+      for (const v of this.buildQueue) { const d = (v.pos.x - c.x) ** 2 + (v.pos.z - c.z) ** 2; if (d < bd) { bd = d; best = v; } }
+      this.buildQueue.delete(best);
+      best.ensureDetail();
+    }
     // exposure: eyes adapt at night
     const target = lerp(1.0, 1.45, night) * (1 + this.weather.storm * 0.12);
     this.renderer.toneMappingExposure = lerp(this.renderer.toneMappingExposure, target, Math.min(1, dt * 0.8));

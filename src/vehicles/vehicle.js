@@ -1,7 +1,7 @@
 // A drivable/AI vehicle: visual model + physics + lights + damage + effects.
 import * as THREE from 'three';
 import { CANNON } from '../core/physics.js';
-import { buildCar, dentBody, CAR_TYPES } from './carModel.js';
+import { buildCar, dentBody, CAR_TYPES, carDetail } from './carModel.js';
 import { VehiclePhysics } from './vehiclePhysics.js';
 import { U } from '../core/globals.js';
 import { clamp, lerp, smoothstep } from '../core/utils.js';
@@ -42,9 +42,11 @@ export class Vehicle {
     this.lastHit = 0;
     this.horn = false;
     this.ai = null;
-    this.seat = this.root.userData.seat;
     this.halfL = this.spec.L / 2; this.halfW = this.spec.W / 2;
   }
+
+  get seat() { this.ensureDetail(); return this.root.userData.seat; }
+  ensureDetail() { if (!this.car.built) this.car.buildNear(carDetail()); }
 
   // ------------------------------------------------------------ physics lifecycle
   enablePhysics(vel = null) {
@@ -81,6 +83,8 @@ export class Vehicle {
     this.disablePhysics();
     this.removeKinematic();
     this.game.scene.remove(this.root);
+    this.car.dispose();
+    this.game.buildQueue?.delete(this);
   }
 
   setPose(x, y, z, yaw) {
@@ -178,7 +182,7 @@ export class Vehicle {
       this.brakeLevel = vp.gear === -1 ? vp.throttle : vp.brake;
       this.reversing = vp.gear === -1;
       // wheels
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 4 && this.car.wheels; i++) {
         const w = rv.wheelInfos[i], W = this.car.wheels[i];
         W.pivot.position.y = vp.connY + vp.P.comY - w.suspensionLength;
         W.pivot.rotation.y = w.steering;
@@ -189,7 +193,7 @@ export class Vehicle {
     } else {
       // kinematic/parked visuals
       this.wheelRot += this.speed * dt / this.spec.wheelR;
-      for (const W of this.car.wheels) {
+      for (const W of this.car.wheels || []) {
         W.spin.rotation.x = this.wheelRot;
         W.pivot.rotation.y = W.front ? this.steerVis : 0;
         W.pivot.position.y = this.spec.wheelR;
@@ -197,6 +201,11 @@ export class Vehicle {
     }
     this.root.position.copy(this.pos);
     this.root.quaternion.copy(this.quat);
+    // build the full-detail model once the car is seen up close
+    if (!this.car.built) {
+      const c = this.game.camera.position;
+      if ((c.x - this.pos.x) ** 2 + (c.z - this.pos.z) ** 2 < 48 * 48) this.game.buildQueue?.add(this);
+    }
     if (this.kin) {
       this.kin.position.set(this.pos.x, this.pos.y, this.pos.z);
       this.kin.quaternion.set(this.quat.x, this.quat.y, this.quat.z, this.quat.w);

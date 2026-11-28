@@ -10,8 +10,8 @@ import { U } from '../core/globals.js';
 export class Player {
   constructor(game) {
     this.game = game;
-    const look = { female: false, tone: 2, height: 1.82, girth: 1.02, shirt: [0.92, 0.92, 0.9], pants: [0.12, 0.16, 0.28], shoes: [0.95, 0.95, 0.95], sleeves: 1.2, pantsTo: 0.1, tank: false, vneck: false, hair: 'short', hairCol: [0.05, 0.035, 0.02], variant: 0 };
-    this.human = new Human(look);
+    const look = { female: false, tone: 2, height: 1.82, girth: 1.02, shirt: [0.92, 0.92, 0.9], pants: [0.12, 0.16, 0.28], shoes: [0.95, 0.95, 0.95], sleeves: 1.2, pantsTo: 0.1, tank: false, vneck: false, hair: 'short', hairCol: [0.05, 0.035, 0.02], variant: 0, beard: true, eye: 1 };
+    this.human = new Human(look, 3);
     this.anim = new Animator(this.human);
     this.root = this.human.root;
     game.scene.add(this.root);
@@ -53,6 +53,7 @@ export class Player {
   }
 
   enter(v) {
+    v.ensureDetail();
     this.game.traffic.claim(v);
     if (!v.vp) v.enablePhysics(v.vel.clone());
     v.mode = 'player';
