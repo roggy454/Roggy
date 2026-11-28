@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Neon Coast</title>
+<meta name="description" content="An original open-world city sandbox set in a Miami-inspired coastal city — procedural cars, people, weather and day/night, running in the browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Pacifico&display=swap">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="location"></div>
+  <div id="topright"><div id="clock">--:--</div><div id="weather"></div><div id="fps"></div></div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="stamina-wrap" class="hidden"><div id="stamina"></div></div>
+  <div id="speedo">
+    <canvas id="tacho" width="210" height="150"></canvas>
+    <div class="speed-row"><span id="speed">0</span><span class="unit">km/h</span></div>
+    <div class="gear-row"><span id="gear">N</span></div>
+    <div id="carname"></div>
+    <div class="health"><div id="health"></div></div>
+  </div>
+  <div id="prompt"></div>
+  <div id="notify"></div>
+  <div id="banner"></div>
+  <button id="menu-btn" aria-label="Menu">☰</button>
+  <div id="help">
+    <h3>Controls</h3>
+    <div class="cols">
+      <div><b>On foot</b>
+        <p><kbd>W A S D</kbd> move · <kbd>Mouse</kbd> look</p>
+        <p><kbd>Shift</kbd> sprint · <kbd>Ctrl</kbd> walk · <kbd>Space</kbd> jump</p>
+        <p><kbd>F</kbd> enter / exit vehicle</p>
+      </div>
+      <div><b>Driving</b>
+        <p><kbd>W</kbd> gas · <kbd>S</kbd> brake / reverse</p>
+        <p><kbd>A D</kbd> steer · <kbd>Space</kbd> handbrake</p>
+        <p><kbd>E</kbd> horn · <kbd>L</kbd> lights · <kbd>Z X G</kbd> indicators / hazards</p>
+        <p><kbd>Q</kbd> radio · <kbd>R</kbd> flip car</p>
+      </div>
+      <div><b>World</b>
+        <p><kbd>V</kbd> camera · <kbd>Wheel</kbd> zoom</p>
+        <p><kbd>Y</kbd> weather · <kbd>T</kbd> hold: fast time · <kbd>N</kbd> +3 h</p>
+        <p><kbd>Esc</kbd> menu · <kbd>M</kbd> mute · <kbd>I</kbd> help</p>
+      </div>
+    </div>
+  </div>
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <div class="tbtns">
+      <button data-btn="enter" data-key="KeyF">F</button>
+      <button data-btn="jump">⤒</button>
+      <button data-btn="sprint">»</button>
+      <button data-btn="brake">HB</button>
+      <button data-btn="horn">♪</button>
+      <button data-btn="radio">📻</button>
+    </div>
+  </div>
+  <div id="menu">
+    <div class="panel">
+      <h2>Paused</h2>
+      <label>Graphics quality
+        <select id="opt-quality">
+          <option value="low">Low (phones)</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="ultra">Ultra</option>
+        </select>
+      </label>
+      <label>Time of day <input id="opt-time" type="range" min="0" max="23.99" step="0.05"></label>
+      <label>Day length
+        <select id="opt-speed">
+          <option value="30">48 min</option>
+          <option value="60" selected>24 min</option>
+          <option value="180">8 min</option>
+          <option value="0">Frozen</option>
+        </select>
+      </label>
+      <label>Weather
+        <select id="opt-weather">
+          <option value="clear">Clear</option>
+          <option value="cloudy">Cloudy</option>
+          <option value="rain">Rain</option>
+          <option value="storm">Thunderstorm</option>
+          <option value="fog">Fog</option>
+        </select>
+      </label>
+      <label class="row"><input id="opt-auto" type="checkbox" checked> Dynamic weather changes</label>
+      <label>Volume <input id="opt-volume" type="range" min="0" max="1.2" step="0.01" value="0.85"></label>
+      <button id="resume">Resume</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading">
+  <div class="load-inner">
+    <div class="logo"><span class="neon">Neon</span><span class="coast">COAST</span></div>
+    <div class="tag">An original open-world city — every car, person, building, texture and sound is generated live in your browser.</div>
+    <div class="bar"><div id="load-bar"></div></div>
+    <div id="load-text">Loading…</div>
+    <button id="start" disabled>Loading…</button>
+    <div class="hint">Best with a keyboard, mouse and headphones. Phones get on-screen controls.</div>
+  </div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
