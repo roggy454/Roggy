@@ -228,6 +228,8 @@ export class Vehicle {
     L.indR.emissiveIntensity = ((this.hazard || this.indicator > 0) && blink) ? 6 : 0.0;
     if (L.taxiSign) L.taxiSign.emissiveIntensity = 0.3 + night * 2.5;
     this.headOn = headOn;
+    const key = `${L.head.emissiveIntensity}|${L.drl.emissiveIntensity}|${L.tail.emissiveIntensity}|${L.brake.emissiveIntensity}|${L.reverse.emissiveIntensity}|${L.indL.emissiveIntensity}|${L.indR.emissiveIntensity}`;
+    if (key !== this._lightKey) { this._lightKey = key; this.car.syncLights(); }
   }
 
   forward(out = new THREE.Vector3()) { return out.set(0, 0, 1).applyQuaternion(this.quat); }

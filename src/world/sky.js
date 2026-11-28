@@ -141,6 +141,7 @@ export class Sky {
     this.sun.castShadow = false;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.camera.layers.enable(1); // objects kept out of reflections still cast shadows
     scene.add(this.sun);
     scene.add(this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xbfd8ff, 0x4a4030, 1.0);

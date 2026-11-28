@@ -93,7 +93,7 @@ function palmGeometry(rng, curve) {
     }
   }
   // coconuts
-  const nut = new THREE.SphereGeometry(0.13, 6, 5);
+  const nut = new THREE.SphereGeometry(0.13, 5, 4);
   const m = new THREE.Matrix4();
   for (let k = 0; k < rng.int(3, 7); k++) {
     const a = rng.range(0, Math.PI * 2);
@@ -221,7 +221,18 @@ export class Vegetation {
 
   build() {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-    const make = (geo, mat, list, depth, cast = true) => {
+    // split instances into spatial cells so frustum culling can skip off-screen ones
+    const CELL = 220;
+    const make = (geo, mat, all, depth, cast = true, noReflect = false) => {
+      const cells = new Map();
+      for (const it of all) {
+        const k = `${Math.floor(it.x / CELL)},${Math.floor(it.z / CELL)}`;
+        if (!cells.has(k)) cells.set(k, []);
+        cells.get(k).push(it);
+      }
+      for (const list of cells.values()) makeOne(geo, mat, list, depth, cast, noReflect);
+    };
+    const makeOne = (geo, mat, list, depth, cast, noReflect) => {
       if (!list.length) return null;
       const im = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((it, i) => {
@@ -234,6 +245,7 @@ export class Vegetation {
       im.castShadow = cast; im.receiveShadow = true;
       if (depth) im.customDepthMaterial = depth;
       im.computeBoundingSphere();
+      if (noReflect) im.layers.set(1);
       this.scene.add(im);
       return im;
     };
@@ -248,8 +260,8 @@ export class Vegetation {
       make(this.treeVariants[v].leaves, this.mats.leaf, list, this.depth.leaf);
     }
     for (let v = 0; v < 2; v++) {
-      make(this.bushVariants[v], this.mats.bush, this.bushes.filter((t) => t.v === v && !t.flowering), this.depth.bush);
-      make(this.bushVariants[v], this.mats.flower, this.bushes.filter((t) => t.v === v && t.flowering), this.depth.bush);
+      make(this.bushVariants[v], this.mats.bush, this.bushes.filter((t) => t.v === v && !t.flowering), this.depth.bush, true, true);
+      make(this.bushVariants[v], this.mats.flower, this.bushes.filter((t) => t.v === v && t.flowering), this.depth.bush, true, true);
     }
   }
 }

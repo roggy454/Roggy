@@ -142,6 +142,9 @@ export class SkidMarks {
     for (let i = 0; i < this.max; i++) { const b = i * 4; idx.set([b, b + 1, b + 2, b + 1, b + 3, b + 2], i * 6); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    const nrm = new Float32Array(this.max * 4 * 3);
+    for (let i = 0; i < this.max * 4; i++) nrm[i * 3 + 1] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.setDrawRange(0, 0);
     this.geo = g;

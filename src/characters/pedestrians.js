@@ -51,6 +51,7 @@ export class Pedestrians {
   make(look) {
     const h = new Human(look);
     const anim = new Animator(h);
+    h.root.traverse((o) => o.layers.set(1)); // keep crowds out of the mirror pass
     this.game.scene.add(h.root);
     return { h, anim, root: h.root, pos: new THREE.Vector3(), vel: new THREE.Vector3(), heading: 0, speed: 0 };
   }

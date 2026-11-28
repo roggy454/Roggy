@@ -45,7 +45,7 @@ export class GeoBuilder {
     if (f.nx) this.quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], [ou + (2 * dx + dz) / tileU, v0, ou + (2 * dx + 2 * dz) / tileU, v0, ou + (2 * dx + 2 * dz) / tileU, v1, ou + (2 * dx + dz) / tileU, v1]);
   }
   // append an arbitrary BufferGeometry transformed by matrix (non-indexed or indexed)
-  addGeometry(geo, matrix, color = null) {
+  addGeometry(geo, matrix, color = null, uvFixed = null) {
     const p = geo.attributes.position, n = geo.attributes.normal, uv = geo.attributes.uv;
     const nm = new THREE.Matrix3().getNormalMatrix(matrix);
     const v = new THREE.Vector3(), vn = new THREE.Vector3();
@@ -55,7 +55,7 @@ export class GeoBuilder {
       v.fromBufferAttribute(p, i).applyMatrix4(matrix);
       if (n) vn.fromBufferAttribute(n, i).applyMatrix3(nm).normalize(); else vn.set(0, 1, 0);
       this.pos.push(v.x, v.y, v.z); this.nrm.push(vn.x, vn.y, vn.z);
-      this.uv.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
+      if (uvFixed) this.uv.push(uvFixed[0], uvFixed[1]); else this.uv.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
       if (this.hasUv1) this.uv1.push(0, 0);
       if (this.hasColor) this.col.push(c[0], c[1], c[2]);
       this.n++;

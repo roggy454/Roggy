@@ -164,19 +164,34 @@ export class Props {
     this.meshes = {};
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.25 });
     this.propMat = mat;
+    const REFLECT = new Set(['lamp', 'signal', 'busstop', 'lifeguard']);
+    const CELL = 200;
     for (const k of Object.keys(KINDS)) {
       const list = this.byKind[k];
       if (!list.length) continue;
       const geo = MODELS[k]();
-      const im = new THREE.InstancedMesh(geo, mat, list.length);
-      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      list.forEach((it, i) => { m4.compose(it.pos, it.quat, s); im.setMatrixAt(i, m4); });
-      if (k === 'umbrella') list.forEach((it, i) => im.setColorAt(i, new THREE.Color(...this.rng.pick(this.umbrellaColors))));
-      im.castShadow = true; im.receiveShadow = true;
-      im.computeBoundingSphere();
-      this.scene.add(im);
-      this.meshes[k] = im;
+      // spatial cells so frustum culling works per neighbourhood
+      const cells = new Map();
+      for (const it of list) {
+        const key = `${Math.floor(it.x / CELL)},${Math.floor(it.z / CELL)}`;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(it);
+      }
+      this.meshes[k] = [];
+      for (const cl of cells.values()) {
+        const im = new THREE.InstancedMesh(geo, mat, cl.length);
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        cl.forEach((it, i) => { it.mesh = im; it.idx = i; m4.compose(it.pos, it.quat, s); im.setMatrixAt(i, m4); });
+        if (k === 'umbrella') cl.forEach((it, i) => im.setColorAt(i, new THREE.Color(...this.rng.pick(this.umbrellaColors))));
+        im.castShadow = true; im.receiveShadow = true;
+        im.computeBoundingSphere();
+        im.boundingSphere.radius += 12; // room for knocked-over props
+        if (!REFLECT.has(k)) im.layers.set(LAYER_NO_REFLECT);
+        this.scene.add(im);
+        this.meshes[k].push(im);
+      }
     }
+    this.byKind.lamp.forEach((it, i) => (it.lampIdx = i));
     // static colliders for non-dynamic props
     for (const it of this.items) {
       const K = KINDS[it.kind];
@@ -322,6 +337,7 @@ export class Props {
     // sync moved bodies to instances
     const m4 = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), off = new THREE.Vector3();
     const dirty = {};
+    const dirtyMeshes = new Set();
     for (const it of this.items) {
       const b = it.body;
       if (!b || it.static || b.type === CANNON.Body.STATIC || b.sleepState === CANNON.Body.SLEEPING) continue;
@@ -330,13 +346,13 @@ export class Props {
       it.pos.set(b.position.x + off.x, b.position.y + off.y, b.position.z + off.z);
       it.moved = true;
       m4.compose(it.pos, it.quat, one);
-      this.meshes[it.kind].setMatrixAt(it.idx, m4);
-      dirty[it.kind] = true;
-      if (it.kind === 'lamp') { this.lens.setMatrixAt(it.idx, m4); dirty._lens = true; }
+      it.mesh.setMatrixAt(it.idx, m4);
+      dirtyMeshes.add(it.mesh);
+      if (it.kind === 'lamp') { this.lens.setMatrixAt(it.lampIdx, m4); dirty._lens = true; }
       if (it.kind === 'signal') dirty._sig = true;
       if (it.pos.y < -20) { this.deactivate(it); }
     }
-    for (const k of Object.keys(dirty)) if (this.meshes[k]) this.meshes[k].instanceMatrix.needsUpdate = true;
+    for (const m of dirtyMeshes) m.instanceMatrix.needsUpdate = true;
     if (dirty._lens) this.lens.instanceMatrix.needsUpdate = true;
     if (dirty._sig) this.updateSignalMatrices();
 

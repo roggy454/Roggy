@@ -360,7 +360,7 @@ let headGeoCache = {};
 function headGeometry(female) {
   const key = female ? 'f' : 'm';
   if (headGeoCache[key]) return headGeoCache[key];
-  const g = new THREE.SphereGeometry(1, 48, 36);
+  const g = new THREE.SphereGeometry(1, 36, 26);
   const p = g.attributes.position;
   const bump = (v, c, w) => Math.exp(-((v - c) * (v - c)) / (w * w));
   for (let i = 0; i < p.count; i++) {
@@ -424,7 +424,7 @@ function hairGeometry(style) {
   let g;
   if (style === 'long' || style === 'bun' || style === 'short' || style === 'buzz' || style === 'curly') {
     const thetaLen = style === 'long' ? Math.PI * 0.78 : style === 'buzz' ? Math.PI * 0.5 : Math.PI * 0.6;
-    g = new THREE.SphereGeometry(1, 36, 24, 0, Math.PI * 2, 0, thetaLen);
+    g = new THREE.SphereGeometry(1, 26, 16, 0, Math.PI * 2, 0, thetaLen);
     const p = g.attributes.position;
     const bulk = style === 'curly' ? 1.18 : style === 'buzz' ? 1.03 : style === 'long' ? 1.08 : 1.07;
     for (let i = 0; i < p.count; i++) {

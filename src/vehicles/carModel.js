@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { makeCanvas, toTexture } from '../core/textures.js';
 import { RNG, clamp, lerp, smoothstep } from '../core/utils.js';
+import { GeoBuilder } from '../core/geo.js';
 
 // ---------------------------------------------------------------- type specs
 export const CAR_TYPES = {
@@ -175,6 +176,8 @@ function getShared() {
     logos: {},
   };
   for (const b of ['VORTEK', 'AURELIA', 'KODIAK', 'PICO', 'MARLIN']) SHARED.logos[b] = new THREE.MeshStandardMaterial({ map: logoTexture(b), transparent: true, alphaTest: 0.3, roughness: 0.15, metalness: 0.8 });
+  SHARED.darkVC = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2 });
+  SHARED.wheelMetal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 1.0 });
   SHARED.grilleMats = {};
   for (const k of Object.keys(SHARED.grille)) SHARED.grilleMats[k] = new THREE.MeshStandardMaterial({ map: SHARED.grille[k], roughness: 0.4, metalness: 0.5 });
   return SHARED;
@@ -326,10 +329,10 @@ function fixWinding(g) {
 }
 
 // ---------------------------------------------------------------- body mesh
-const SUB = 4;
+const SUB = 3;
 function buildBody(shape, detail = 1) {
   const s = shape.s;
-  const NS = detail ? 70 : 18;
+  const NS = detail ? 56 : 16;
   const sub = detail ? SUB : 1;
   const zs = [];
   for (let i = 0; i < NS; i++) {
@@ -487,7 +490,7 @@ function buildWheel(spec, sh, side) {
   prof.push(new THREE.Vector2(r - 0.035, tw / 2 - 0.004));
   prof.push(new THREE.Vector2(rimR + sw * 0.5, tw / 2));
   prof.push(new THREE.Vector2(rimR + 0.005, tw / 2 - 0.01));
-  const tg = new THREE.LatheGeometry(prof, 28);
+  const tg = new THREE.LatheGeometry(prof, 22);
   // remap uv.v to profile fraction (tread in the middle)
   tg.rotateZ(Math.PI / 2);
   sh.tire.map.repeat.set(2, 1);
@@ -507,7 +510,7 @@ function buildWheel(spec, sh, side) {
     hole.absarc(0, 0, ri, a1, a0, true);
     shape.holes.push(hole);
   }
-  const rg = new THREE.ExtrudeGeometry(shape, { depth: 0.035, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.008, bevelSegments: 2, curveSegments: 22 });
+  const rg = new THREE.ExtrudeGeometry(shape, { depth: 0.035, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.008, bevelSegments: 1, curveSegments: 12 });
   rg.rotateY(Math.PI / 2);
   rg.translate(tw / 2 - 0.07, 0, 0);
   const rimMat = spec.sporty || spec.brand === 'KODIAK' ? sh.rimDark : sh.rim;
@@ -550,6 +553,54 @@ function mergeSimple(geos) {
   return m;
 }
 
+// merge every static mesh under `group` into one mesh per material (fewer draw calls)
+// remap: Map(material -> { target, color:[r,g,b], uv:[u,v] }) folds several materials into one
+function mergeByMaterial(group, keep = new Set(), castShadow = false, remap = null, layer = 0) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const buckets = new Map();
+  const remove = [];
+  group.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material) || keep.has(o)) return;
+    for (let p = o.parent; p && p !== group; p = p.parent) if (keep.has(p)) return;
+    const m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
+    const r = remap && remap.get(o.material);
+    const target = r ? r.target : o.material;
+    if (!buckets.has(target)) buckets.set(target, new GeoBuilder({ color: !!r }));
+    const b = buckets.get(target);
+    b.addGeometry(o.geometry, m, r ? r.color : null, r ? r.uv : null);
+    remove.push(o);
+  });
+  for (const o of remove) o.parent.remove(o);
+  // drop empty helper groups
+  const empties = [];
+  group.traverse((o) => { if (o !== group && o.type === 'Group' && o.children.length === 0) empties.push(o); });
+  for (const e of empties) e.parent && e.parent.remove(e);
+  for (const [mat, b] of buckets) {
+    const mesh = new THREE.Mesh(b.build(), mat);
+    mesh.castShadow = castShadow;
+    if (layer) mesh.layers.set(layer);
+    group.add(mesh);
+  }
+}
+const col3 = (m) => [m.color.r, m.color.g, m.color.b];
+
+let FAR_LIGHTS = null;
+export function farLightMaterials() {
+  if (!FAR_LIGHTS) FAR_LIGHTS = {
+    head: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.3, 0.3) }),
+    tail: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 0.02, 0.02) }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6 }),
+  };
+  return FAR_LIGHTS;
+}
+export function updateFarLights(night) {
+  const F = farLightMaterials();
+  const k = smoothstep(0.3, 0.7, night);
+  F.head.color.setRGB(0.35 + k * 6, 0.35 + k * 5.6, 0.33 + k * 5);
+  F.tail.color.setRGB(0.25 + k * 2.2, 0.02 + k * 0.04, 0.02 + k * 0.03);
+}
+
 // ---------------------------------------------------------------- full car
 const plateChars = 'ABCDEFGHJKLMNPRSTUVWXYZ';
 export function randomPlate(rng) {
@@ -577,6 +628,21 @@ export function buildCar(typeKey, { color = null, rng = new RNG(1), plate = null
     reverse: new THREE.MeshStandardMaterial({ color: 0x333333, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 0.0, roughness: 0.3 }),
     indL: new THREE.MeshStandardMaterial({ color: 0x331a00, emissive: new THREE.Color(1, 0.45, 0.02), emissiveIntensity: 0.0 }),
     indR: new THREE.MeshStandardMaterial({ color: 0x331a00, emissive: new THREE.Color(1, 0.45, 0.02), emissiveIntensity: 0.0 }),
+  };
+
+  // all lamps share one material; a 8x1 float texture holds each lamp's emissive
+  const LIGHT_ORDER = ['head', 'drl', 'tail', 'brake', 'reverse', 'indL', 'indR'];
+  const lightData = new Float32Array(8 * 4);
+  const lightTex = new THREE.DataTexture(lightData, 8, 1, THREE.RGBAFormat, THREE.FloatType);
+  lightTex.minFilter = lightTex.magFilter = THREE.NearestFilter;
+  lightTex.needsUpdate = true;
+  const lightsMat = new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0xffffff, emissiveMap: lightTex, roughness: 0.35, metalness: 0.3 });
+  const syncLights = () => {
+    LIGHT_ORDER.forEach((k, i) => {
+      const m = L[k], e = m.emissive, I = m.emissiveIntensity;
+      lightData[i * 4] = e.r * I; lightData[i * 4 + 1] = e.g * I; lightData[i * 4 + 2] = e.b * I; lightData[i * 4 + 3] = 1;
+    });
+    lightTex.needsUpdate = true;
   };
 
   // --- body (unique geometry for damage)
@@ -839,26 +905,50 @@ export function buildCar(typeKey, { color = null, rng = new RNG(1), plate = null
     root.userData.steeringWheel = wheel;
   }
 
-  // --- far LOD: low-res body + simple wheels + lights
+  // collapse static detail: dark trim parts -> one vertex-coloured material, all lamps -> one
+  const remap = new Map();
+  for (const m of [sh.trim, sh.housing, sh.under, sh.liner, sh.interior, sh.seat, sh.rubber]) remap.set(m, { target: sh.darkVC, color: col3(m) });
+  LIGHT_ORDER.forEach((k, i) => remap.set(L[k], { target: lightsMat, color: col3(L[k]), uv: [(i + 0.5) / 8, 0.5] }));
+  mergeByMaterial(near, new Set([body, root.userData.steeringWheel]), false, remap, 1);
+  const wremap = new Map();
+  for (const m of [sh.rim, sh.rimDark, sh.disc, sh.chrome]) wremap.set(m, { target: sh.wheelMetal, color: col3(m) });
+  for (const w of wheels) mergeByMaterial(w.spin.children[0], new Set(), false, wremap);
+
+  // --- far LOD: one mesh, 4 draw calls (paint / dark / head / tail)
+  const F = farLightMaterials();
   const far = new THREE.Group();
-  const lowBody = new THREE.Mesh(buildBody(shape, 0), [paint, sh.trim, sh.trim, sh.under]);
-  lowBody.castShadow = true;
-  far.add(lowBody);
-  const simpleWheel = new THREE.CylinderGeometry(spec.wheelR, spec.wheelR, spec.tireW, 12); simpleWheel.rotateZ(Math.PI / 2);
-  const wGeos = [];
-  for (const w of wheels) { const g = simpleWheel.clone(); g.translate(w.x, wy, w.z); wGeos.push(g); }
-  far.add(new THREE.Mesh(mergeSimple(wGeos), sh.rubber));
-  for (const side of [1, -1]) {
-    const h = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.1), L.head); h.position.set(side * halfEnd * 0.82, noseY - 0.1, zF + 0.01); far.add(h);
-    const t = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.1), L.tail); t.rotation.y = Math.PI; t.position.set(side * shape.halfW(zR) * 0.8, tailTop - 0.12, zR - 0.01); far.add(t);
+  {
+    const low = buildBody(shape, 0);
+    const pos = low.attributes.position, nrm = low.attributes.normal;
+    const paintB = new GeoBuilder(), darkB = new GeoBuilder(), headB = new GeoBuilder(), tailB = new GeoBuilder();
+    const ix = low.index.array;
+    for (const grp of low.groups) {
+      const B = grp.materialIndex === 0 ? paintB : darkB;
+      for (let i = grp.start; i < grp.start + grp.count; i++) {
+        const k = ix[i];
+        B.vert(pos.getX(k), pos.getY(k), pos.getZ(k), nrm.getX(k), nrm.getY(k), nrm.getZ(k), 0, 0);
+        B.idx.push(B.n - 1);
+      }
+    }
+    const simpleWheel = new THREE.CylinderGeometry(spec.wheelR, spec.wheelR, spec.tireW, 10); simpleWheel.rotateZ(Math.PI / 2);
+    for (const w of wheels) darkB.addGeometry(simpleWheel, new THREE.Matrix4().makeTranslation(w.x, wy, w.z));
+    for (const side of [1, -1]) {
+      headB.addGeometry(new THREE.PlaneGeometry(0.28, 0.1), new THREE.Matrix4().makeTranslation(side * halfEnd * 0.82, noseY - 0.1, zF + 0.01));
+      tailB.addGeometry(new THREE.PlaneGeometry(0.3, 0.1), new THREE.Matrix4().makeRotationY(Math.PI).setPosition(side * shape.halfW(zR) * 0.8, tailTop - 0.12, zR - 0.01));
+    }
+    for (const [B, mat, cast] of [[paintB, paint, true], [darkB, F.dark, true], [headB, F.head, false], [tailB, F.tail, false]]) {
+      const m = new THREE.Mesh(B.build(), mat); m.castShadow = cast; far.add(m);
+    }
   }
   const lod = new THREE.LOD();
   lod.addLevel(near, 0);
-  lod.addLevel(far, 55);
+  lod.addLevel(far, 24);
+  lod.addLevel(new THREE.Object3D(), 340);
   root.add(lod);
   root.userData.lod = lod;
 
-  return { root, body, near, far, wheels, lights: L, paint, spec, shape, plate: plateText, type: typeKey };
+  syncLights();
+  return { root, body, near, far, wheels, lights: L, syncLights, paint, spec, shape, plate: plateText, type: typeKey };
 }
 
 // dent the body geometry around a local-space point

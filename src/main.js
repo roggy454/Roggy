@@ -31,6 +31,7 @@ import { Pedestrians } from './characters/pedestrians.js';
 import { Audio } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
 import { SPAWN, groundHeight } from './world/map.js';
+import { updateFarLights } from './vehicles/carModel.js';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVignette: { value: 0.32 }, uSat: { value: 1.08 }, uFlash: { value: 0 }, uWet: { value: 0 } },
@@ -313,6 +314,7 @@ class Game {
     this.grass.update(dt, focus, this.camera.position);
     this.fx.update(dt, 0.12 + this.sky.info.dayK * 0.88);
     this.updateHeadlights(pv, night);
+    updateFarLights(night);
     this.audio.update(dt, this);
     this.hud.update(dt);
     // exposure: eyes adapt at night

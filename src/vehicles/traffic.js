@@ -59,7 +59,7 @@ export class Traffic {
     for (const s of slabs) {
       if (s.kind !== 'parking' || !s.stalls) continue;
       for (const st of s.stalls) {
-        if (!this.rng.chance(0.42)) continue;
+        if (!this.rng.chance(0.3)) continue;
         const v = this.newVehicle(pickType(this.rng));
         v.setPose(st.x, 0.15, st.z, this.rng.chance(0.5) ? 0 : Math.PI);
         v.mode = 'parked';
