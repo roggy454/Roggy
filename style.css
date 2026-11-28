@@ -109,3 +109,8 @@ kbd { display: inline-block; background: rgba(255, 255, 255, 0.12); border: 1px 
   #stick { left: 16px; bottom: 170px; }
   .tbtns { bottom: 150px; right: 10px; }
 }
+
+#dropzone { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 6, 20, 0.7); border: 3px dashed var(--accent); z-index: 20; font-size: 20px; color: var(--text); pointer-events: none; }
+#dropzone.show { display: flex; }
+#menu input[type=file] { font: 600 12px var(--font); color: var(--muted); }
+#menu button.secondary { background: #262438; }

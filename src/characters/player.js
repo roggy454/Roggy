@@ -6,6 +6,8 @@ import { Animator } from './animator.js';
 import { groundHeight, surfaceAt, WATER_LEVEL, isWater, SPAWN } from '../world/map.js';
 import { clamp, damp, dampAngle, lerp, RNG, wrapAngle } from '../core/utils.js';
 import { U } from '../core/globals.js';
+import { Retarget } from './retarget.js';
+import { fitCharacterModel } from '../core/models.js';
 
 export class Player {
   constructor(game) {
@@ -30,6 +32,27 @@ export class Player {
   }
 
   get x() { return this.pos.x; } get z() { return this.pos.z; }
+
+  // swap the visible body for an imported rigged model, driven by our animation
+  useModel(gltf, { flip = false } = {}) {
+    if (this.custom) { this.root.remove(this.custom.root); this.custom = null; }
+    const model = fitCharacterModel(gltf.scene, this.human.look.height, { flip });
+    this.root.add(model);
+    const rt = new Retarget(this.human, model, this.root);
+    if (!rt.ok) {
+      this.root.remove(model);
+      return { ok: false, missing: rt.missing || ['skeleton'] };
+    }
+    this.human.mesh.visible = false;
+    this.custom = { root: model, rt };
+    return { ok: true };
+  }
+  resetModel() {
+    if (!this.custom) return;
+    this.root.remove(this.custom.root);
+    this.custom = null;
+    this.human.mesh.visible = true;
+  }
 
   footstep(side, v) {
     const s = this.swimming ? 'water' : surfaceAt(this.pos.x, this.pos.z);
@@ -171,6 +194,7 @@ export class Player {
     this.anim.vy = this.vel.y;
     this.anim.turn = 0;
     this.anim.update(dt);
+    this.custom?.rt.update();
     this.root.position.copy(this.pos);
     if (this.swimming) this.root.position.y = WATER_LEVEL - 1.0;
     this.root.rotation.set(0, this.heading, 0);
@@ -200,6 +224,8 @@ export class Player {
     this.anim.mode = 'drive';
     this.anim.steer = vp.steerAngle / 0.5;
     this.anim.update(dt);
+    this.custom?.rt.update();
+    if (input.hit('KeyB') && v.importSource) { this.exit(); this.game.reimportFlipped(v); return; }
     this.pos.copy(v.pos);
   }
 }

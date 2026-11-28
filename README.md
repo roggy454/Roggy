@@ -58,7 +58,9 @@ Gamepads (standard mapping) and touch screens (on‑screen stick + buttons) are 
   (torque curve, automatic gearbox, clutch slip, traction limit, brakes with bias, handbrake drift,
   aero drag and downforce, surface grip for wet asphalt / grass / sand, stability assist).
   Lamp posts snap, cones and bins scatter, hydrants burst, car bodies dent on impact.
-- **Cars** — six models of five invented brands built from scratch: lofted bodies with flush
+- **Cars** — ten body styles (mid-engine supercar, GT coupe, muscle car, sedan, estate, hatchback,
+  SUV, crew-cab pickup with an open bed, taxi, van) from six invented brands, each car randomly varied in
+  proportions, wheel style and finish, built from scratch: lofted bodies with flush
   glass and frit, wheel arches, wrap‑around light clusters with projectors/LED/DRL/indicators,
   brake/reverse/third brake lights, grilles, badges, readable plates, mirrors, shut lines,
   multi‑part wheels with brake discs and calipers, interiors.
@@ -71,6 +73,12 @@ Gamepads (standard mapping) and touch screens (on‑screen stick + buttons) are 
   road and wind noise, surface‑aware footsteps, crashes, horns, rain, thunder, surf, birds,
   crickets, distant sirens and three procedural radio stations.
 
+## Use your own 3D models
+
+Drag a `.glb` car or rigged character onto the game window, or list models in `models/manifest.json`.
+Cars become drivable with full physics; characters are animated by the game's own walk/run/drive system.
+See [`models/README.md`](models/README.md).
+
 ## Project layout
 
 ```
@@ -79,7 +87,8 @@ src/main.js               bootstrap, game loop, post-processing
 src/core/                 textures, physics, input, camera, collision, shared uniforms
 src/world/                map layout, roads, buildings, water, sky, weather, grass, props, fx
 src/vehicles/             car models, vehicle physics, traffic AI
-src/characters/           human generator, animation, player, pedestrians
+src/characters/           human generator, animation, retargeting, player, pedestrians
+models/                   optional .glb cars/characters (see models/README.md)
 src/audio/                synthesized audio + radio
 src/ui/                   HUD and minimap
 ```

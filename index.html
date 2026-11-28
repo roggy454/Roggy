@@ -100,11 +100,16 @@
       </label>
       <label class="row"><input id="opt-auto" type="checkbox" checked> Dynamic weather changes</label>
       <label>Volume <input id="opt-volume" type="range" min="0" max="1.2" step="0.01" value="0.85"></label>
+      <label>Your own 3D models (.glb)
+        <input id="opt-import" type="file" accept=".glb,.gltf" multiple>
+      </label>
+      <button id="opt-reset-player" type="button" class="secondary">Use default character</button>
       <button id="resume">Resume</button>
     </div>
   </div>
 </div>
 
+<div id="dropzone"><div>Drop a <b>.glb</b> car or rigged character to add it to the game</div></div>
 <div id="loading">
   <div class="load-inner">
     <div class="logo"><span class="neon">Neon</span><span class="coast">COAST</span></div>

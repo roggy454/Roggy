@@ -8,7 +8,7 @@ import { edges, nodes, signalState, HALF_ROAD, LANE_OFFSETS, slabs } from '../wo
 import { RNG, clamp, lerp, wrapAngle } from '../core/utils.js';
 import { STATE } from '../core/globals.js';
 
-const TYPE_WEIGHTS = [['sedan', 30], ['taxi', 12], ['suv', 22], ['hatch', 18], ['coupe', 8], ['van', 10]];
+const TYPE_WEIGHTS = [['sedan', 20], ['taxi', 9], ['suv', 16], ['hatch', 13], ['coupe', 6], ['van', 7], ['truck', 12], ['wagon', 7], ['muscle', 6], ['supercar', 4]];
 function pickType(rng) {
   let r = rng.next() * 100;
   for (const [k, w] of TYPE_WEIGHTS) { if ((r -= w) < 0) return k; }

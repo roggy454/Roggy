@@ -1,0 +1,7 @@
+{
+  "cars": [
+    { "file": "my-supercar.glb", "name": "My Supercar" },
+    { "file": "pickup.glb", "name": "Pickup", "flip": false }
+  ],
+  "player": { "file": "me.glb" }
+}

@@ -32,6 +32,7 @@ import { Audio } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
 import { SPAWN, groundHeight } from './world/map.js';
 import { updateFarLights } from './vehicles/carModel.js';
+import { parseGLB, loadGLB, isCharacter, fitCarModel, specForModel } from './core/models.js';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVignette: { value: 0.32 }, uSat: { value: 1.08 }, uFlash: { value: 0 }, uWet: { value: 0 } },
@@ -144,9 +145,10 @@ class Game {
     this.traffic = new Traffic(this);
     // three cars parked side by side facing the street, right next to the spawn point
     this.showcase = [
-      this.traffic.spawnShowcase(-97.5, 22, Math.PI / 2, 'coupe', [0.62, 0.02, 0.04]),
-      this.traffic.spawnShowcase(-97.5, 26.5, Math.PI / 2, 'suv', [0.05, 0.05, 0.06]),
-      this.traffic.spawnShowcase(-97.5, 17.5, Math.PI / 2, 'sedan', [0.75, 0.76, 0.78]),
+      this.traffic.spawnShowcase(-97.5, 22, Math.PI / 2, 'supercar', [0.75, 0.02, 0.02]),
+      this.traffic.spawnShowcase(-97.5, 27, Math.PI / 2, 'truck', [0.18, 0.2, 0.22]),
+      this.traffic.spawnShowcase(-97.5, 17, Math.PI / 2, 'muscle', [0.85, 0.35, 0.02]),
+      this.traffic.spawnShowcase(-97.5, 12, Math.PI / 2, 'suv', [0.05, 0.05, 0.06]),
     ];
     for (const v of this.showcase) v.ensureDetail();
     this.buildQueue = new Set();
@@ -186,6 +188,7 @@ class Game {
     this.ready = true;
     document.getElementById('start').disabled = false;
     document.getElementById('start').textContent = touch ? 'Tap to play' : 'Click to play';
+    this.loadManifest();
     this.loop = this.loop.bind(this);
     this.last = performance.now();
     requestAnimationFrame(this.loop);
@@ -249,8 +252,105 @@ class Game {
     $('opt-speed').addEventListener('change', (e) => (STATE.timeScale = parseFloat(e.target.value)));
     $('opt-volume').addEventListener('input', (e) => { if (this.audio.ok) this.audio.master.gain.value = parseFloat(e.target.value); });
     $('resume').addEventListener('click', () => this.toggleMenu(false));
+    const drop = $('dropzone');
+    window.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('show'); });
+    window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) drop.classList.remove('show'); });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault(); drop.classList.remove('show');
+      for (const f of e.dataTransfer.files) if (/\.(glb|gltf)$/i.test(f.name)) this.importFile(f);
+    });
+    $('opt-import').addEventListener('change', (e) => { for (const f of e.target.files) this.importFile(f); e.target.value = ''; });
+    $('opt-reset-player').addEventListener('click', () => { this.player.resetModel(); this.hud.notify('Back to the default character'); });
     $('menu-btn').addEventListener('click', () => this.toggleMenu(true));
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.audio.ctx?.suspend?.(); else if (this.running) this.audio.resume(); });
+  }
+
+  // ---------------------------------------------------------- real 3D models
+  async importFile(file) {
+    const name = file.name.replace(/\.(glb|gltf)$/i, '');
+    this.hud.notify(`Loading ${file.name}…`, 3);
+    try {
+      const data = await file.arrayBuffer();
+      const gltf = await parseGLB(data, '');
+      this.applyImported(gltf, name, { data });
+    } catch (e) {
+      console.error(e);
+      this.hud.notify(`Could not load ${file.name}: ${e.message || e}`, 5);
+    }
+  }
+  applyImported(gltf, name, src = {}) {
+    if (isCharacter(gltf)) {
+      const r = this.player.useModel(gltf, { flip: !!src.flip });
+      this.hud.notify(r.ok ? `You are now playing as ${name}` : `${name}: couldn't match bones (${r.missing.join(', ')})`, 5);
+      return;
+    }
+    const yaw = this.player.heading;
+    const { x, z } = this.freeSpot(this.player.pos, yaw);
+    const v = this.importCar(gltf, name, x, z, yaw + Math.PI / 2, src);
+    this.hud.notify(`${name} spawned — press F to drive (B while driving flips it if it's backwards)`, 6);
+    return v;
+  }
+  // a clear patch of ground near `p` (no buildings, cars or water within a few metres)
+  freeSpot(p, yaw = 0) {
+    const vehicles = [...this.traffic.all()];
+    for (let ring = 0; ring < 6; ring++) for (let k = 0; k < 12; k++) {
+      const a = yaw + (k / 12) * Math.PI * 2, d = 7 + ring * 4;
+      const x = p.x + Math.sin(a) * d, z = p.z + Math.cos(a) * d;
+      if (groundHeight(x, z) < 0) continue;
+      const probe = new THREE.Vector3(x, groundHeight(x, z), z);
+      if (this.collide.resolve(probe.clone(), 3.2)) continue;
+      if (vehicles.some((v) => (v.pos.x - x) ** 2 + (v.pos.z - z) ** 2 < 36)) continue;
+      return { x, z };
+    }
+    return { x: p.x + 8, z: p.z };
+  }
+  importCar(gltf, name, x, z, yaw, src = {}) {
+    const fit = fitCarModel(gltf.scene, { flip: !!src.flip });
+    const spec = specForModel(fit.size, fit.wheels, name);
+    const v = this.traffic.newVehicle(spec.roofY > 1.7 ? 'suv' : 'sedan');
+    const car = v.car;
+    const lod = car.root.userData.lod;
+    car.root.remove(lod);
+    lod.traverse((o) => o.geometry?.dispose());
+    car.root.add(fit.root);
+    car.spec = spec; v.spec = spec; v.name = name;
+    v.halfL = spec.L / 2; v.halfW = spec.W / 2;
+    car.built = true; car.wheels = fit.wheels.length === 4 ? fit.wheels : null;
+    car.root.userData.seat = new THREE.Vector3(spec.W * 0.2, spec.yBottom + 0.28, spec.zWsTop - 0.15);
+    car.root.userData.lod = null;
+    v.importSource = { gltfData: src.data || null, url: src.url || null, name, flip: !!src.flip };
+    v.setPose(x, groundHeight(x, z), z, yaw);
+    v.mode = 'parked';
+    this.traffic.parked.push(v);
+    return v;
+  }
+  async reimportFlipped(v) {
+    const s = v.importSource;
+    const pos = v.pos.clone(), yaw = v.yaw;
+    const i = this.traffic.parked.indexOf(v); if (i >= 0) this.traffic.parked.splice(i, 1);
+    v.dispose();
+    const gltf = s.gltfData ? await parseGLB(s.gltfData, '') : await loadGLB(s.url);
+    this.importCar(gltf, s.name, pos.x, pos.z, yaw, { data: s.gltfData, url: s.url, flip: !s.flip });
+    this.hud.notify(`${s.name} flipped`, 2);
+  }
+  async loadManifest() {
+    try {
+      const res = await fetch('models/manifest.json', { cache: 'no-store' });
+      if (!res.ok) return;
+      const m = await res.json();
+      let k = 0;
+      for (const c of m.cars || []) {
+        const gltf = await loadGLB('models/' + c.file);
+        const { x, z } = this.freeSpot(this.player.pos, Math.PI);
+        this.importCar(gltf, c.name || c.file, x, z, Math.PI / 2, { url: 'models/' + c.file, flip: !!c.flip });
+        k++;
+      }
+      if (m.player) {
+        const gltf = await loadGLB('models/' + (m.player.file || m.player));
+        this.player.useModel(gltf, { flip: !!m.player.flip });
+      }
+      if (k || m.player) this.hud.notify('Custom models loaded', 3);
+    } catch (e) { console.warn('model manifest:', e); }
   }
 
   toggleMenu(open) {
